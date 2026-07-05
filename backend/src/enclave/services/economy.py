@@ -19,6 +19,24 @@ class CentralBank:
     def __init__(self, passive_tick_cost: Decimal) -> None:
         self._passive_tick_cost = passive_tick_cost
         self._balances: dict[str, Decimal] = {CENTRAL_BANK_TREASURY_ID: Decimal("0")}
+        self._ledger: list[Transaction] = []
+
+    def _record(self, transaction: Transaction) -> Transaction:
+        self._ledger.append(transaction)
+        return transaction
+
+    def transactions_between(self, agent_a: str, agent_b: str) -> list[Transaction]:
+        """Historial completo entre dos partes, en cualquier dirección, ordenado
+        por tick. Lo usa el Agente Juez como evidencia al resolver una disputa."""
+        parties = {agent_a, agent_b}
+        return sorted(
+            (
+                transaction
+                for transaction in self._ledger
+                if {transaction.from_agent, transaction.to_agent} <= parties
+            ),
+            key=lambda transaction: transaction.tick,
+        )
 
     def open_account(self, agent_id: str, initial_balance: Decimal) -> None:
         self._balances[agent_id] = initial_balance
@@ -48,14 +66,16 @@ class CentralBank:
         self._balances[from_agent] = available - amount
         self._balances[to_agent] = self._balances.get(to_agent, Decimal("0")) + amount
 
-        return Transaction(
-            transaction_id=str(uuid.uuid4()),
-            from_agent=from_agent,
-            to_agent=to_agent,
-            amount=amount,
-            reason=reason,
-            tick=tick,
-            timestamp=datetime.now(UTC),
+        return self._record(
+            Transaction(
+                transaction_id=str(uuid.uuid4()),
+                from_agent=from_agent,
+                to_agent=to_agent,
+                amount=amount,
+                reason=reason,
+                tick=tick,
+                timestamp=datetime.now(UTC),
+            )
         )
 
     def apply_passive_tick_cost(self, agent_id: str, tick: int) -> tuple[Transaction, bool]:
@@ -71,14 +91,16 @@ class CentralBank:
         self._balances[agent_id] = balance - charged
         self._balances[CENTRAL_BANK_TREASURY_ID] += charged
 
-        transaction = Transaction(
-            transaction_id=str(uuid.uuid4()),
-            from_agent=agent_id,
-            to_agent=CENTRAL_BANK_TREASURY_ID,
-            amount=charged,
-            reason="passive_tick_cost",
-            tick=tick,
-            timestamp=datetime.now(UTC),
+        transaction = self._record(
+            Transaction(
+                transaction_id=str(uuid.uuid4()),
+                from_agent=agent_id,
+                to_agent=CENTRAL_BANK_TREASURY_ID,
+                amount=charged,
+                reason="passive_tick_cost",
+                tick=tick,
+                timestamp=datetime.now(UTC),
+            )
         )
         is_bankrupt = self._balances[agent_id] <= 0
         return transaction, is_bankrupt
@@ -94,14 +116,16 @@ class CentralBank:
             raise ValueError("subsidy amount must be positive")
 
         self._balances[agent_id] = self.get_balance(agent_id) + amount
-        return Transaction(
-            transaction_id=str(uuid.uuid4()),
-            from_agent=CENTRAL_BANK_TREASURY_ID,
-            to_agent=agent_id,
-            amount=amount,
-            reason="divine_subsidy",
-            tick=tick,
-            timestamp=datetime.now(UTC),
+        return self._record(
+            Transaction(
+                transaction_id=str(uuid.uuid4()),
+                from_agent=CENTRAL_BANK_TREASURY_ID,
+                to_agent=agent_id,
+                amount=amount,
+                reason="divine_subsidy",
+                tick=tick,
+                timestamp=datetime.now(UTC),
+            )
         )
 
     def devalue_currency(self, factor: Decimal) -> None:

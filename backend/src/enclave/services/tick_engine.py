@@ -72,6 +72,18 @@ class TickEngine:
         self._agents[agent_id] = updated
         return updated
 
+    def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
+        """Implementa `TrustLedger`: usado, entre otros, por el Agente Juez para
+        penalizar la confianza hacia quien incumple un contrato."""
+        if agent_id not in self._agents:
+            return
+        current = self._agents[agent_id].trust_links.get(counterparty_id, 0.0)
+        updated_trust = max(-1.0, min(1.0, current + delta))
+        new_links = {**self._agents[agent_id].trust_links, counterparty_id: updated_trust}
+        self._agents[agent_id] = self._agents[agent_id].model_copy(
+            update={"trust_links": new_links}
+        )
+
     def sync_balances_from_bank(self) -> None:
         """Refresca los snapshots de `AgentState` tras una intervención directa
         sobre el `CentralBank` (devaluación, subvención), sin esperar al próximo tick."""

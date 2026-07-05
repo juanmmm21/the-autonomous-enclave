@@ -104,6 +104,43 @@ def test_devalue_currency_rejects_non_positive_factor(bank: CentralBank) -> None
         bank.devalue_currency(Decimal("0"))
 
 
+def test_transactions_between_returns_only_transfers_between_the_two_parties(
+    bank: CentralBank,
+) -> None:
+    bank.open_account("carol", Decimal("30.0"))
+    bank.transfer("alice", "bob", Decimal("10.0"), "payment", tick=1)
+    bank.transfer("bob", "carol", Decimal("5.0"), "unrelated", tick=2)
+    bank.transfer("bob", "alice", Decimal("3.0"), "refund", tick=3)
+
+    history = bank.transactions_between("alice", "bob")
+
+    assert [t.reason for t in history] == ["payment", "refund"]
+
+
+def test_transactions_between_is_order_independent_and_sorted_by_tick(
+    bank: CentralBank,
+) -> None:
+    bank.transfer("bob", "alice", Decimal("3.0"), "second", tick=5)
+    bank.transfer("alice", "bob", Decimal("10.0"), "first", tick=2)
+
+    history_ab = bank.transactions_between("alice", "bob")
+    history_ba = bank.transactions_between("bob", "alice")
+
+    assert [t.reason for t in history_ab] == ["first", "second"]
+    assert history_ab == history_ba
+
+
+def test_transactions_between_includes_passive_cost_and_penalty_entries(
+    bank: CentralBank,
+) -> None:
+    bank.apply_passive_tick_cost("alice", tick=1)
+    bank.apply_penalty("alice", Decimal("5.0"), tick=2)
+
+    history = bank.transactions_between("alice", CENTRAL_BANK_TREASURY_ID)
+
+    assert [t.reason for t in history] == ["passive_tick_cost", "judge_penalty"]
+
+
 def test_all_balances_excludes_treasury(bank: CentralBank) -> None:
     balances = bank.all_balances()
 

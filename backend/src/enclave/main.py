@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ticks_per_day=settings.ticks_per_day,
         on_tick=telemetry_hub.broadcast,
     )
-    judge = JudgeAgent(judge_backend, contracts, bank)
+    judge = JudgeAgent(judge_backend, contracts, bank, tick_engine)
     seed_initial_citizens(tick_engine)
 
     app.state.settings = settings

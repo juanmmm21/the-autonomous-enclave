@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import pytest
 from conftest import FakeBroker, FakeLLM, FakeMemoryStore
 
 from enclave.models import AgentState, Personality, Position
@@ -86,3 +87,29 @@ async def test_sleep_cycle_clears_daily_log_after_persisting() -> None:
 
     assert len(memory.stored_summaries) == 2  # un resumen por día, sin arrastrar el anterior
     assert "tick 1" not in memory.stored_summaries[1][2]
+
+
+async def test_adjust_trust_updates_the_agents_trust_links() -> None:
+    engine, _ = _make_engine()
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    engine.adjust_trust("agent-1", "agent-2", -0.3)
+    engine.adjust_trust("agent-1", "agent-2", -0.3)
+
+    assert engine.agent_snapshot("agent-1").trust_links["agent-2"] == pytest.approx(-0.6)
+
+
+async def test_adjust_trust_clamps_to_valid_range() -> None:
+    engine, _ = _make_engine()
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    for _ in range(10):
+        engine.adjust_trust("agent-1", "agent-2", -0.3)
+
+    assert engine.agent_snapshot("agent-1").trust_links["agent-2"] == -1.0
+
+
+async def test_adjust_trust_on_unknown_agent_is_a_no_op() -> None:
+    engine, _ = _make_engine()
+
+    engine.adjust_trust("ghost", "agent-2", -0.3)  # no debe lanzar

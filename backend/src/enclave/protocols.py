@@ -60,3 +60,13 @@ class MessageBroker(Protocol):
     async def publish_offer(self, offer: MarketOffer) -> None: ...
 
     async def fetch_open_offers(self) -> list[MarketOffer]: ...
+
+
+class TrustLedger(Protocol):
+    """Permite ajustar la confianza de un agente hacia otro tras un evento
+    social relevante (p.ej. un veredicto del Agente Juez)."""
+
+    def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
+        """Suma `delta` (puede ser negativo) a la confianza de `agent_id` hacia
+        `counterparty_id`, saturando el resultado en el rango [-1, 1]."""
+        ...

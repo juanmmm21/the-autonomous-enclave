@@ -56,3 +56,27 @@ class FakeMemoryStore:
         self, agent_id: str, query: str, top_k: int = 5
     ) -> list[str]:
         return self._by_agent.get(agent_id, [])[-top_k:]
+
+
+class FakeTrustLedger:
+    """Doble en memoria de `TrustLedger`, sin dependencia del `TickEngine`."""
+
+    def __init__(self) -> None:
+        self.adjustments: list[tuple[str, str, float]] = []
+
+    def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
+        self.adjustments.append((agent_id, counterparty_id, delta))
+
+
+class FakeJudgeBackend:
+    """Doble de `JudgeBackend` que devuelve un veredicto prefijado, sin llamar a Ollama."""
+
+    def __init__(self, verdict: object) -> None:
+        self._verdict = verdict
+        self.received_dispute_context: str | None = None
+
+    async def adjudicate(
+        self, system_prompt: str, contract: object, dispute_context: str
+    ) -> object:
+        self.received_dispute_context = dispute_context
+        return self._verdict
