@@ -45,27 +45,30 @@ def _make_engine(
     ticks_per_day: int = 3,
     tick_interval_seconds: float = 5.0,
     llm: FakeLLM | None = None,
-) -> tuple[TickEngine, FakeMemoryStore]:
+    contracts: ContractRegistry | None = None,
+) -> tuple[TickEngine, FakeMemoryStore, ContractRegistry]:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
     quotas = InferenceQuotaLedger()
+    contract_registry = contracts or ContractRegistry()
     memory = memory_store or FakeMemoryStore()
     runtime = AgentRuntime(
-        llm or FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory, quotas
+        llm or FakeLLM(), broker or FakeBroker(), bank, contract_registry, memory, quotas
     )
     engine = TickEngine(
         runtime,
         bank,
         memory,
         quotas,
+        contract_registry,
         energy_price=Decimal("1.0"),
         ticks_per_day=ticks_per_day,
         tick_interval_seconds=tick_interval_seconds,
     )
-    return engine, memory
+    return engine, memory, contract_registry
 
 
 async def test_run_tick_charges_passive_cost_to_registered_agents() -> None:
-    engine, _ = _make_engine()
+    engine, _, _ = _make_engine()
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     await engine.run_tick()
@@ -74,7 +77,7 @@ async def test_run_tick_charges_passive_cost_to_registered_agents() -> None:
 
 
 async def test_run_tick_survives_infrastructure_failure_in_perceive() -> None:
-    engine, _ = _make_engine(broker=_BrokenBroker())
+    engine, _, _ = _make_engine(broker=_BrokenBroker())
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     event = await engine.run_tick()
@@ -85,7 +88,7 @@ async def test_run_tick_survives_infrastructure_failure_in_perceive() -> None:
 
 
 async def test_sleep_cycle_persists_daily_summary_at_day_boundary() -> None:
-    engine, memory = _make_engine(ticks_per_day=2)
+    engine, memory, _ = _make_engine(ticks_per_day=2)
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     await engine.run_tick()
@@ -101,7 +104,7 @@ async def test_sleep_cycle_persists_daily_summary_at_day_boundary() -> None:
 
 
 async def test_sleep_cycle_clears_daily_log_after_persisting() -> None:
-    engine, memory = _make_engine(ticks_per_day=1)
+    engine, memory, _ = _make_engine(ticks_per_day=1)
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     await engine.run_tick()
@@ -112,7 +115,7 @@ async def test_sleep_cycle_clears_daily_log_after_persisting() -> None:
 
 
 async def test_adjust_trust_updates_the_agents_trust_links() -> None:
-    engine, _ = _make_engine()
+    engine, _, _ = _make_engine()
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     engine.adjust_trust("agent-1", "agent-2", -0.3)
@@ -122,7 +125,7 @@ async def test_adjust_trust_updates_the_agents_trust_links() -> None:
 
 
 async def test_adjust_trust_clamps_to_valid_range() -> None:
-    engine, _ = _make_engine()
+    engine, _, _ = _make_engine()
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     for _ in range(10):
@@ -132,13 +135,13 @@ async def test_adjust_trust_clamps_to_valid_range() -> None:
 
 
 async def test_adjust_trust_on_unknown_agent_is_a_no_op() -> None:
-    engine, _ = _make_engine()
+    engine, _, _ = _make_engine()
 
     engine.adjust_trust("ghost", "agent-2", -0.3)  # no debe lanzar
 
 
 async def test_inflation_rate_is_zero_before_a_full_day_has_elapsed() -> None:
-    engine, _ = _make_engine(ticks_per_day=3)
+    engine, _, _ = _make_engine(ticks_per_day=3)
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     event = await engine.run_tick()
@@ -147,7 +150,7 @@ async def test_inflation_rate_is_zero_before_a_full_day_has_elapsed() -> None:
 
 
 async def test_inflation_rate_reflects_energy_price_drift_after_one_day() -> None:
-    engine, _ = _make_engine(ticks_per_day=2)
+    engine, _, _ = _make_engine(ticks_per_day=2)
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     for _ in range(3):
@@ -170,7 +173,7 @@ class _SleepOnceLLM(FakeLLM):
 
 
 async def test_sleeping_agent_wakes_up_on_the_next_tick() -> None:
-    engine, _ = _make_engine(llm=_SleepOnceLLM())
+    engine, _, _ = _make_engine(llm=_SleepOnceLLM())
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     await engine.run_tick()
@@ -188,7 +191,7 @@ async def test_run_tick_survives_an_economically_invalid_action() -> None:
         reasoning="spending beyond my means",
         payload={"to_agent": "agent-2", "amount": "9999"},
     )
-    engine, _ = _make_engine(llm=FakeLLM(overdraft))
+    engine, _, _ = _make_engine(llm=FakeLLM(overdraft))
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
     engine.register_agent(_make_agent_state("agent-2"), system_prompt="be productive")
 
@@ -211,7 +214,7 @@ class _ExplodingJudge:
 
 
 async def test_tick_loop_keeps_running_when_the_judge_fails() -> None:
-    engine, _ = _make_engine()
+    engine, _, _ = _make_engine()
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
     judge = _ExplodingJudge()
 
@@ -235,9 +238,47 @@ async def test_tick_loop_keeps_running_when_the_judge_fails() -> None:
 async def test_transactions_per_minute_matches_real_tick_cadence() -> None:
     # Con un coste pasivo por tick y un intervalo de 5s, el ritmo esperado es
     # de 60/5 = 12 transacciones por minuto con un único agente registrado.
-    engine, _ = _make_engine(tick_interval_seconds=5.0)
+    engine, _, _ = _make_engine(tick_interval_seconds=5.0)
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
 
     event = await engine.run_tick()
 
     assert event.indicators.transactions_per_minute == pytest.approx(12.0)
+
+
+async def test_pending_contract_stays_pending_within_the_grace_period() -> None:
+    engine, _, contracts = _make_engine(ticks_per_day=2)
+    contract = contracts.create_contract(
+        "agent-1", "agent-2", "deliver 10 vector packs", Decimal("10.0"), tick=0
+    )
+
+    await engine.run_tick()  # tick 1: 1 - 0 = 1 < 2, aún dentro del plazo
+
+    assert contracts.get(contract.contract_id).status.value == "pending"
+
+
+async def test_overdue_pending_contract_is_auto_escalated_to_disputed() -> None:
+    # Ningún agente elige FILE_DISPUTE, pero el contrato lleva más de un día
+    # simulado en PENDING: el sistema lo escala solo para que llegue al Juez.
+    engine, _, contracts = _make_engine(ticks_per_day=2)
+    contract = contracts.create_contract(
+        "agent-1", "agent-2", "deliver 10 vector packs", Decimal("10.0"), tick=0
+    )
+
+    await engine.run_tick()  # tick 1
+    await engine.run_tick()  # tick 2: 2 - 0 = 2 >= 2, se escala
+
+    assert contracts.get(contract.contract_id).status.value == "disputed"
+
+
+async def test_already_resolved_contracts_are_not_touched_by_expiration() -> None:
+    engine, _, contracts = _make_engine(ticks_per_day=1)
+    contract = contracts.create_contract(
+        "agent-1", "agent-2", "deliver 10 vector packs", Decimal("10.0"), tick=0
+    )
+    contracts.mark_fulfilled(contract.contract_id)
+
+    await engine.run_tick()
+    await engine.run_tick()
+
+    assert contracts.get(contract.contract_id).status.value == "fulfilled"

@@ -15,6 +15,7 @@ from enclave.exceptions import EnclaveError, LLMGenerationError
 from enclave.models import AgentState, AgentStatus, EconomicIndicators, TickEvent
 from enclave.protocols import MemoryStore
 from enclave.services.agent_runtime import AgentRuntime
+from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank, compute_energy_price, compute_gini_index
 from enclave.services.inference_market import InferenceQuotaLedger
 
@@ -32,6 +33,7 @@ class TickEngine:
         bank: CentralBank,
         memory_store: MemoryStore,
         quota_ledger: InferenceQuotaLedger,
+        contracts: ContractRegistry,
         energy_price: Decimal,
         ticks_per_day: int = DEFAULT_TICKS_PER_DAY,
         tick_interval_seconds: float = 5.0,
@@ -41,6 +43,7 @@ class TickEngine:
         self._bank = bank
         self._memory = memory_store
         self._quotas = quota_ledger
+        self._contracts = contracts
         self._base_energy_price = energy_price
         self._energy_price = energy_price
         self._ticks_per_day = ticks_per_day
@@ -113,6 +116,16 @@ class TickEngine:
             if agent_state.status in (AgentStatus.BANKRUPT, AgentStatus.TERMINATED):
                 continue
             self._agents[agent_id] = await self._run_agent_tick(agent_id, agent_state)
+
+        expired_contracts = self._contracts.expire_overdue_contracts(
+            self._tick, self._ticks_per_day
+        )
+        for contract in expired_contracts:
+            logger.info(
+                "contract %s auto-escalated to DISPUTED after %d ticks without resolution",
+                contract.contract_id,
+                self._ticks_per_day,
+            )
 
         if self._tick % self._ticks_per_day == 0:
             await self._run_sleep_cycle()

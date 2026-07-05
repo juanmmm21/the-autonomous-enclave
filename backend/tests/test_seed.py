@@ -13,9 +13,10 @@ from enclave.services.tick_engine import TickEngine
 def _make_engine() -> TickEngine:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
     quotas = InferenceQuotaLedger()
+    contracts = ContractRegistry()
     memory_store = FakeMemoryStore()
-    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, ContractRegistry(), memory_store, quotas)
-    return TickEngine(runtime, bank, memory_store, quotas, energy_price=Decimal("1.0"))
+    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, contracts, memory_store, quotas)
+    return TickEngine(runtime, bank, memory_store, quotas, contracts, energy_price=Decimal("1.0"))
 
 
 def test_seed_registers_every_blueprint() -> None:

@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         bank,
         memory_store,
         quota_ledger,
+        contracts,
         energy_price=Decimal("1.0"),
         ticks_per_day=settings.ticks_per_day,
         tick_interval_seconds=settings.tick_interval_seconds,

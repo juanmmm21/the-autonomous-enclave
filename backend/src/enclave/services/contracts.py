@@ -58,3 +58,22 @@ class ContractRegistry:
 
     def disputed_contracts(self) -> list[Contract]:
         return [c for c in self._contracts.values() if c.status == ContractStatus.DISPUTED]
+
+    def expire_overdue_contracts(
+        self, current_tick: int, grace_period_ticks: int
+    ) -> list[Contract]:
+        """Escala automáticamente a `DISPUTED` los contratos que llevan más de
+        `grace_period_ticks` en `PENDING`. Sin esto, un agente perjudicado que
+        nunca elige `FILE_DISPUTE` (porque se calla, quiebra o simplemente no lo
+        decide) deja el contrato en limbo para siempre y el infractor nunca
+        responde ante el Agente Juez."""
+        expired: list[Contract] = []
+        for contract_id, contract in self._contracts.items():
+            if contract.status != ContractStatus.PENDING:
+                continue
+            if current_tick - contract.created_at_tick < grace_period_ticks:
+                continue
+            updated = contract.model_copy(update={"status": ContractStatus.DISPUTED})
+            self._contracts[contract_id] = updated
+            expired.append(updated)
+        return expired
