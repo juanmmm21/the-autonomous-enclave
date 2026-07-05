@@ -7,6 +7,8 @@ from pydantic import ValidationError
 from enclave.models import (
     GRID_HEIGHT,
     GRID_WIDTH,
+    ActionType,
+    AgentAction,
     AgentState,
     AgentStatus,
     AssetType,
@@ -90,3 +92,18 @@ def test_market_offer_unit_price_serializes_as_string() -> None:
     payload = json.loads(offer.model_dump_json())
 
     assert payload["unit_price"] == "7.5"
+
+
+def test_agent_action_coerces_explicit_null_payload_to_empty_dict() -> None:
+    # llama3.2 a veces devuelve "payload": null en vez de omitir la clave.
+    action = AgentAction.model_validate(
+        {"action_type": "sleep", "reasoning": "necesito descansar", "payload": None}
+    )
+
+    assert action.payload == {}
+
+
+def test_agent_action_default_payload_is_empty_dict_when_key_absent() -> None:
+    action = AgentAction(action_type=ActionType.IDLE, reasoning="nada que hacer")
+
+    assert action.payload == {}

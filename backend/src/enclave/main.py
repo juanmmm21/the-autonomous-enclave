@@ -48,10 +48,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_store = QdrantMemoryStore(settings.qdrant_url, settings.ollama_url)
     bank = CentralBank(Decimal(settings.passive_tick_cost))
     contracts = ContractRegistry()
-    runtime = AgentRuntime(llm_backend, broker, bank, contracts)
+    runtime = AgentRuntime(llm_backend, broker, bank, contracts, memory_store)
     telemetry_hub = TelemetryHub()
     tick_engine = TickEngine(
-        runtime, bank, energy_price=Decimal("1.0"), on_tick=telemetry_hub.broadcast
+        runtime,
+        bank,
+        memory_store,
+        energy_price=Decimal("1.0"),
+        ticks_per_day=settings.ticks_per_day,
+        on_tick=telemetry_hub.broadcast,
     )
     judge = JudgeAgent(judge_backend, contracts, bank)
     seed_initial_citizens(tick_engine)

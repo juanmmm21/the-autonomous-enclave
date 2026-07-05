@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from conftest import FakeBroker, FakeLLM
+from conftest import FakeBroker, FakeLLM, FakeMemoryStore
 
 from enclave.seed import INITIAL_CITIZENS, seed_initial_citizens
 from enclave.services.agent_runtime import AgentRuntime
@@ -11,8 +11,9 @@ from enclave.services.tick_engine import TickEngine
 
 def _make_engine() -> TickEngine:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
-    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, ContractRegistry())
-    return TickEngine(runtime, bank, energy_price=Decimal("1.0"))
+    memory_store = FakeMemoryStore()
+    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, ContractRegistry(), memory_store)
+    return TickEngine(runtime, bank, memory_store, energy_price=Decimal("1.0"))
 
 
 def test_seed_registers_every_blueprint() -> None:

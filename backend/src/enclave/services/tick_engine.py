@@ -1,6 +1,8 @@
 """Reloj global de la simulación. En cada tick, recorre a todos los agentes
 vivos, ejecuta su ciclo Perceive/Think/Act, cobra el coste pasivo de
-mantenimiento y emite un `TickEvent` agregado para la telemetría del frontend."""
+mantenimiento y emite un `TickEvent` agregado para la telemetría del frontend.
+Cada `ticks_per_day` ticks, comprime las interacciones recientes de cada
+agente en un resumen persistido en la memoria vectorial (ciclo de sueño)."""
 
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ from decimal import Decimal
 
 from enclave.exceptions import LLMGenerationError
 from enclave.models import AgentState, AgentStatus, EconomicIndicators, TickEvent
+from enclave.protocols import MemoryStore
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.economy import CentralBank, compute_gini_index
 
@@ -18,21 +21,28 @@ logger = logging.getLogger("enclave.tick_engine")
 
 TickListener = Callable[[TickEvent], Awaitable[None]]
 
+DEFAULT_TICKS_PER_DAY = 10
+
 
 class TickEngine:
     def __init__(
         self,
         runtime: AgentRuntime,
         bank: CentralBank,
+        memory_store: MemoryStore,
         energy_price: Decimal,
+        ticks_per_day: int = DEFAULT_TICKS_PER_DAY,
         on_tick: TickListener | None = None,
     ) -> None:
         self._runtime = runtime
         self._bank = bank
+        self._memory = memory_store
         self._energy_price = energy_price
+        self._ticks_per_day = ticks_per_day
         self._on_tick = on_tick
         self._agents: dict[str, AgentState] = {}
         self._system_prompts: dict[str, str] = {}
+        self._daily_log: dict[str, list[str]] = {}
         self._tick = 0
 
     @property
@@ -46,6 +56,7 @@ class TickEngine:
     def register_agent(self, agent_state: AgentState, system_prompt: str) -> None:
         self._agents[agent_state.agent_id] = agent_state
         self._system_prompts[agent_state.agent_id] = system_prompt
+        self._daily_log[agent_state.agent_id] = []
         self._bank.open_account(agent_state.agent_id, agent_state.balance)
 
     def agent_snapshot(self, agent_id: str) -> AgentState:
@@ -78,6 +89,9 @@ class TickEngine:
                 continue
             self._agents[agent_id] = await self._run_agent_tick(agent_id, agent_state)
 
+        if self._tick % self._ticks_per_day == 0:
+            await self._run_sleep_cycle()
+
         indicators = self._compute_indicators()
         event = TickEvent(
             tick=self._tick,
@@ -91,20 +105,47 @@ class TickEngine:
 
     async def _run_agent_tick(self, agent_id: str, agent_state: AgentState) -> AgentState:
         system_prompt = self._system_prompts[agent_id]
-        context = await self._runtime.perceive(agent_state, self._energy_price, self._tick)
 
         try:
+            context = await self._runtime.perceive(agent_state, self._energy_price, self._tick)
             action = await self._runtime.think(system_prompt, context)
             agent_state = agent_state.model_copy(update={"last_reasoning": action.reasoning})
             agent_state = await self._runtime.act(agent_state, action, self._tick)
+            self._daily_log[agent_id].append(f"[tick {self._tick}] {action.reasoning}")
         except LLMGenerationError:
             logger.exception("agent %s produced an invalid action on tick %d", agent_id, self._tick)
+        except Exception:
+            # Fallos de infraestructura (Redis, Qdrant, Ollama caído...) no deben tumbar
+            # el tick de toda la colonia por culpa de un único ciudadano.
+            logger.exception(
+                "agent %s failed to complete tick %d due to an infrastructure error",
+                agent_id,
+                self._tick,
+            )
 
         _, is_bankrupt = self._bank.apply_passive_tick_cost(agent_id, self._tick)
         agent_state = agent_state.model_copy(update={"balance": self._bank.get_balance(agent_id)})
         if is_bankrupt:
             agent_state = agent_state.model_copy(update={"status": AgentStatus.BANKRUPT})
         return agent_state
+
+    async def _run_sleep_cycle(self) -> None:
+        """Al final de cada jornada simulada, resume las interacciones clave del
+        día de cada agente y las persiste en la memoria vectorial, vaciando el
+        log intermedio para el día siguiente."""
+        day = self._tick // self._ticks_per_day
+        for agent_id, entries in self._daily_log.items():
+            if not entries:
+                continue
+            summary = f"Resumen del día {day} para {agent_id}:\n" + "\n".join(entries)
+            try:
+                await self._memory.store_daily_summary(agent_id, day, summary)
+            except Exception:
+                logger.exception(
+                    "failed to persist daily summary for agent %s on day %d", agent_id, day
+                )
+            finally:
+                self._daily_log[agent_id] = []
 
     def _compute_indicators(self) -> EconomicIndicators:
         balances = list(self._bank.all_balances().values())

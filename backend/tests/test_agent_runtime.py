@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 import pytest
-from conftest import FakeBroker, FakeLLM
+from conftest import FakeBroker, FakeLLM, FakeMemoryStore
 
 from enclave.exceptions import LLMGenerationError
 from enclave.models import (
@@ -51,7 +51,11 @@ def _make_runtime(
     broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
 ) -> AgentRuntime:
     return AgentRuntime(
-        FakeLLM(AgentAction(action_type=ActionType.IDLE, reasoning="noop")), broker, bank, contracts
+        FakeLLM(AgentAction(action_type=ActionType.IDLE, reasoning="noop")),
+        broker,
+        bank,
+        contracts,
+        FakeMemoryStore(),
     )
 
 
@@ -71,6 +75,19 @@ async def test_perceive_combines_inbox_offers_and_state(
     assert len(context.inbox) == 1
     assert context.inbox[0].body == "hi"
     assert context.self_state.agent_id == "agent-1"
+
+
+async def test_perceive_includes_recent_memories_from_the_memory_store(
+    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+) -> None:
+    memory_store = FakeMemoryStore()
+    await memory_store.store_daily_summary("agent-1", day=1, summary="ayer negocié con agent-2")
+    runtime = AgentRuntime(FakeLLM(), broker, bank, contracts, memory_store)
+    agent_state = _make_agent_state()
+
+    context = await runtime.perceive(agent_state, energy_price=Decimal("1.0"), tick=1)
+
+    assert context.recent_memories == ["ayer negocié con agent-2"]
 
 
 async def test_act_move_updates_position(

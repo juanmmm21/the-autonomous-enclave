@@ -38,3 +38,21 @@ class FakeLLM:
     async def generate_action(self, system_prompt: str, context: PerceivedContext) -> AgentAction:
         self.received_context = context
         return self._action
+
+
+class FakeMemoryStore:
+    """Doble en memoria de `MemoryStore`, sin dependencia de Qdrant/Ollama."""
+
+    def __init__(self) -> None:
+        self.stored_summaries: list[tuple[str, int, str]] = []
+        self._by_agent: dict[str, list[str]] = {}
+
+    async def store_daily_summary(self, agent_id: str, day: int, summary: str) -> str:
+        self.stored_summaries.append((agent_id, day, summary))
+        self._by_agent.setdefault(agent_id, []).append(summary)
+        return f"fake-vector-{len(self.stored_summaries)}"
+
+    async def retrieve_relevant_memories(
+        self, agent_id: str, query: str, top_k: int = 5
+    ) -> list[str]:
+        return self._by_agent.get(agent_id, [])[-top_k:]

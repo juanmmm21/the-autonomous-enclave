@@ -12,7 +12,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 SimCoin = Annotated[Decimal, Field(description="Monto expresado en SimCoin")]
 
@@ -166,6 +166,9 @@ class PerceivedContext(MoneyModel):
     market_offers: list[MarketOffer]
     energy_price: SimCoin
     current_tick: int
+    recent_memories: list[str] = Field(
+        default_factory=list, description="Resúmenes de días anteriores recuperados de Qdrant"
+    )
 
 
 class AgentAction(BaseModel):
@@ -174,6 +177,14 @@ class AgentAction(BaseModel):
     action_type: ActionType
     reasoning: str = Field(description="Razonamiento interno expuesto al Inspector de Conciencia")
     payload: dict[str, str | int | float] = Field(default_factory=dict)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _coerce_null_payload(cls, value: object) -> object:
+        # Algunos modelos locales (p.ej. llama3.2) devuelven `"payload": null` en vez de
+        # omitir la clave para acciones sin parámetros (sleep, idle); el default de
+        # pydantic solo aplica cuando la clave está ausente, no cuando es `None` explícito.
+        return {} if value is None else value
 
 
 class EconomicIndicators(BaseModel):

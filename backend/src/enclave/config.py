@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     passive_tick_cost: str = "1.0"
     """Coste pasivo por tick en SimCoin, como string para preservar precisión Decimal."""
 
+    ticks_per_day: int = 10
+    """Cada cuántos ticks se ejecuta el ciclo de sueño (compresión de memoria)."""
+
 
 def get_settings() -> Settings:
     return Settings()

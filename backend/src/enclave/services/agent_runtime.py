@@ -19,9 +19,11 @@ from enclave.models import (
     PerceivedContext,
     Position,
 )
-from enclave.protocols import LLMBackend, MessageBroker
+from enclave.protocols import LLMBackend, MemoryStore, MessageBroker
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
+
+RECENT_MEMORIES_TOP_K = 3
 
 
 def _require_str(payload: dict[str, str | int | float], key: str, action: ActionType) -> str:
@@ -52,23 +54,29 @@ class AgentRuntime:
         broker: MessageBroker,
         bank: CentralBank,
         contracts: ContractRegistry,
+        memory_store: MemoryStore,
     ) -> None:
         self._llm = llm_backend
         self._broker = broker
         self._bank = bank
         self._contracts = contracts
+        self._memory = memory_store
 
     async def perceive(
         self, agent_state: AgentState, energy_price: Decimal, tick: int
     ) -> PerceivedContext:
         inbox = await self._broker.fetch_inbox(agent_state.agent_id)
         offers = await self._broker.fetch_open_offers()
+        recent_memories = await self._memory.retrieve_relevant_memories(
+            agent_state.agent_id, query=agent_state.display_name, top_k=RECENT_MEMORIES_TOP_K
+        )
         return PerceivedContext(
             self_state=agent_state,
             inbox=inbox,
             market_offers=offers,
             energy_price=energy_price,
             current_tick=tick,
+            recent_memories=recent_memories,
         )
 
     async def think(self, system_prompt: str, context: PerceivedContext) -> AgentAction:
