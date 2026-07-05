@@ -33,7 +33,3 @@ async def get_agent(agent_id: str, engine: TickEngine = Depends(get_tick_engine)
 @router.get("/tick", response_model=dict[str, int])
 async def current_tick(engine: TickEngine = Depends(get_tick_engine)) -> dict[str, int]:
     return {"tick": engine.current_tick}
-
-
-def _registered_agent_ids(engine: TickEngine) -> list[str]:
-    return list(engine.all_agent_ids())

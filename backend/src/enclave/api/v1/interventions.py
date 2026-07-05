@@ -42,11 +42,12 @@ async def devalue_currency(
 async def subsidize_agent(
     body: SubsidyRequest, engine: TickEngine = Depends(get_tick_engine)
 ) -> AgentState:
-    try:
-        engine.bank.print_subsidy(body.agent_id, body.amount, engine.current_tick)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"agent {body.agent_id} not found") from exc
+    # Se valida contra el registro de ciudadanos, no contra el banco: el tesoro
+    # tiene cuenta bancaria pero no es un agente subvencionable.
+    if body.agent_id not in engine.all_agent_ids():
+        raise HTTPException(status_code=404, detail=f"agent {body.agent_id} not found")
 
+    engine.bank.print_subsidy(body.agent_id, body.amount, engine.current_tick)
     engine.sync_balances_from_bank()
     return engine.agent_snapshot(body.agent_id)
 
