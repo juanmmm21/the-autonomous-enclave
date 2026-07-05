@@ -29,6 +29,10 @@ class InferenceQuotaRequest(BaseModel):
     quota: int = Field(ge=0)
 
 
+class EnergyShockRequest(BaseModel):
+    factor: Decimal = Field(gt=0, description=">1 simula escasez, <1 simula abundancia energética")
+
+
 @router.post("/interventions/devalue")
 async def devalue_currency(
     body: DevaluationRequest, engine: TickEngine = Depends(get_tick_engine)
@@ -60,3 +64,11 @@ async def blackout_agent(
         return engine.set_inference_quota(body.agent_id, body.quota)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"agent {body.agent_id} not found") from exc
+
+
+@router.post("/interventions/energy_shock")
+async def energy_shock(
+    body: EnergyShockRequest, engine: TickEngine = Depends(get_tick_engine)
+) -> dict[str, str]:
+    new_price = engine.apply_energy_shock(body.factor)
+    return {"status": "applied", "factor": str(body.factor), "energy_price": str(new_price)}

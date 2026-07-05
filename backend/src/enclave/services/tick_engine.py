@@ -63,6 +63,14 @@ class TickEngine:
     def bank(self) -> CentralBank:
         return self._bank
 
+    @property
+    def quotas(self) -> InferenceQuotaLedger:
+        return self._quotas
+
+    @property
+    def current_energy_price(self) -> Decimal:
+        return self._energy_price
+
     def register_agent(self, agent_state: AgentState, system_prompt: str) -> None:
         self._agents[agent_state.agent_id] = agent_state
         self._system_prompts[agent_state.agent_id] = system_prompt
@@ -85,6 +93,17 @@ class TickEngine:
         self._quotas.set_quota(agent_id, quota)
         self._agents[agent_id] = updated
         return updated
+
+    def apply_energy_shock(self, factor: Decimal) -> Decimal:
+        """Consola de Intervención Divina: shock de escasez (factor > 1) o
+        abundancia (factor < 1) energética. Desplaza permanentemente el precio
+        base sobre el que oscila `compute_energy_price`, con efecto inmediato
+        sobre el precio del tick actual."""
+        if factor <= 0:
+            raise ValueError("energy shock factor must be positive")
+        self._base_energy_price = self._base_energy_price * factor
+        self._energy_price = self._energy_price * factor
+        return self._energy_price
 
     def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
         """Implementa `TrustLedger`: usado, entre otros, por el Agente Juez para

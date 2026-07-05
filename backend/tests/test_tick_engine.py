@@ -282,3 +282,31 @@ async def test_already_resolved_contracts_are_not_touched_by_expiration() -> Non
     await engine.run_tick()
 
     assert contracts.get(contract.contract_id).status.value == "fulfilled"
+
+
+async def test_apply_energy_shock_scales_the_current_price_immediately() -> None:
+    engine, _, _ = _make_engine()
+    price_before = engine.current_energy_price
+
+    new_price = engine.apply_energy_shock(Decimal("2.0"))
+
+    assert new_price == price_before * Decimal("2.0")
+    assert engine.current_energy_price == new_price
+
+
+async def test_apply_energy_shock_persists_into_the_next_ticks_price() -> None:
+    engine, _, _ = _make_engine()
+    engine.apply_energy_shock(Decimal("3.0"))
+
+    await engine.run_tick()
+
+    # El shock desplaza el precio BASE, así que se refleja en el próximo tick
+    # calculado (no solo en el instante en que se aplicó la intervención).
+    assert engine.current_energy_price > Decimal("2.5")
+
+
+async def test_apply_energy_shock_rejects_non_positive_factor() -> None:
+    engine, _, _ = _make_engine()
+
+    with pytest.raises(ValueError, match="positive"):
+        engine.apply_energy_shock(Decimal("0"))

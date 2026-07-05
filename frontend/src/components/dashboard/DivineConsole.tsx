@@ -75,6 +75,22 @@ export function DivineConsole({ selectedAgentId }: DivineConsoleProps) {
         >
           Subvencionar (+100)
         </button>
+        <button
+          type="button"
+          disabled={state === "pending"}
+          className={buttonClasses}
+          onClick={() => run(() => postIntervention("energy_shock", { factor: 2.0 }))}
+        >
+          Shock energético (x2)
+        </button>
+        <button
+          type="button"
+          disabled={state === "pending"}
+          className={buttonClasses}
+          onClick={() => run(() => postIntervention("energy_shock", { factor: 0.5 }))}
+        >
+          Abundancia energética (÷2)
+        </button>
       </div>
       {!selectedAgentId && (
         <p className="text-xs text-slate-500">
