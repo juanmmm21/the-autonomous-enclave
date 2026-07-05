@@ -92,6 +92,10 @@ class AgentState(MoneyModel):
     trust_links: dict[str, float] = Field(
         default_factory=dict, description="agent_id -> puntuación de confianza [-1, 1]"
     )
+    last_reasoning: str | None = Field(
+        default=None,
+        description="Razonamiento interno del último tick, para el Inspector de Conciencia",
+    )
 
 
 class MarketOffer(MoneyModel):

@@ -75,6 +75,7 @@ class TickEngine:
 
         try:
             action = await self._runtime.think(system_prompt, context)
+            agent_state = agent_state.model_copy(update={"last_reasoning": action.reasoning})
             agent_state = await self._runtime.act(agent_state, action, self._tick)
         except LLMGenerationError:
             logger.exception("agent %s produced an invalid action on tick %d", agent_id, self._tick)
