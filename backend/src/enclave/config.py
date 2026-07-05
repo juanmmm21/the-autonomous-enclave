@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
-    judge_ollama_model: str = "llama3.1:70b"
+    judge_ollama_model: str = "phi4"
 
     tick_interval_seconds: float = 5.0
     passive_tick_cost: str = "1.0"

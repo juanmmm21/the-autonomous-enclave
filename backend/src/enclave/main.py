@@ -18,6 +18,7 @@ from enclave.api.v1.router import router as v1_router
 from enclave.api.v1.websocket import TelemetryHub
 from enclave.api.v1.websocket import router as websocket_router
 from enclave.config import Settings, get_settings
+from enclave.seed import seed_initial_citizens
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
@@ -30,10 +31,11 @@ from enclave.services.tick_engine import TickEngine
 logger = logging.getLogger("enclave.main")
 
 
-async def _tick_loop(engine: TickEngine, interval_seconds: float) -> None:
+async def _tick_loop(engine: TickEngine, judge: JudgeAgent, interval_seconds: float) -> None:
     while True:
         await asyncio.sleep(interval_seconds)
         await engine.run_tick()
+        await judge.review_disputed_contracts(engine.current_tick)
 
 
 @asynccontextmanager
@@ -52,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         runtime, bank, energy_price=Decimal("1.0"), on_tick=telemetry_hub.broadcast
     )
     judge = JudgeAgent(judge_backend, contracts, bank)
+    seed_initial_citizens(tick_engine)
 
     app.state.settings = settings
     app.state.tick_engine = tick_engine
@@ -59,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.judge = judge
     app.state.memory_store = memory_store
 
-    tick_task = asyncio.create_task(_tick_loop(tick_engine, settings.tick_interval_seconds))
+    tick_task = asyncio.create_task(_tick_loop(tick_engine, judge, settings.tick_interval_seconds))
     logger.info("enclave started: tick interval=%.1fs", settings.tick_interval_seconds)
 
     try:
