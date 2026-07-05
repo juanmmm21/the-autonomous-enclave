@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from conftest import FakeBroker, FakeLLM
 
 from enclave.exceptions import LLMGenerationError
 from enclave.models import (
@@ -9,48 +10,12 @@ from enclave.models import (
     AgentState,
     AssetType,
     InboxMessage,
-    MarketOffer,
-    PerceivedContext,
     Personality,
     Position,
 )
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
-
-
-class FakeBroker:
-    """Doble en memoria de `MessageBroker`, sin dependencia de Redis."""
-
-    def __init__(self) -> None:
-        self.sent_messages: list[InboxMessage] = []
-        self.published_offers: list[MarketOffer] = []
-        self._inbox: dict[str, list[InboxMessage]] = {}
-
-    async def send_direct_message(self, to_agent: str, message: InboxMessage) -> None:
-        self.sent_messages.append(message)
-        self._inbox.setdefault(to_agent, []).append(message)
-
-    async def fetch_inbox(self, agent_id: str) -> list[InboxMessage]:
-        return self._inbox.pop(agent_id, [])
-
-    async def publish_offer(self, offer: MarketOffer) -> None:
-        self.published_offers.append(offer)
-
-    async def fetch_open_offers(self) -> list[MarketOffer]:
-        return list(self.published_offers)
-
-
-class FakeLLM:
-    """Doble de `LLMBackend` que devuelve una acción prefijada, sin llamar a Ollama."""
-
-    def __init__(self, action: AgentAction) -> None:
-        self._action = action
-        self.received_context: PerceivedContext | None = None
-
-    async def generate_action(self, system_prompt: str, context: PerceivedContext) -> AgentAction:
-        self.received_context = context
-        return self._action
 
 
 def _make_agent_state(agent_id: str = "agent-1") -> AgentState:
@@ -121,6 +86,19 @@ async def test_act_move_updates_position(
 
     assert updated.position.x == 3
     assert updated.position.y == 4
+
+
+async def test_act_move_out_of_bounds_raises_llm_generation_error(
+    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+) -> None:
+    runtime = _make_runtime(broker, bank, contracts)
+    agent_state = _make_agent_state()
+    action = AgentAction(
+        action_type=ActionType.MOVE, reasoning="wandering off", payload={"x": 999, "y": 999}
+    )
+
+    with pytest.raises(LLMGenerationError):
+        await runtime.act(agent_state, action, tick=1)
 
 
 async def test_act_send_message_reaches_broker(

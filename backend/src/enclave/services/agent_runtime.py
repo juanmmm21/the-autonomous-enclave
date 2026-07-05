@@ -6,6 +6,8 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal, InvalidOperation
 
+from pydantic import ValidationError
+
 from enclave.exceptions import LLMGenerationError
 from enclave.models import (
     ActionType,
@@ -83,7 +85,13 @@ class AgentRuntime:
             case ActionType.MOVE:
                 new_x = int(payload.get("x", agent_state.position.x))
                 new_y = int(payload.get("y", agent_state.position.y))
-                return agent_state.model_copy(update={"position": Position(x=new_x, y=new_y)})
+                try:
+                    new_position = Position(x=new_x, y=new_y)
+                except ValidationError as exc:
+                    raise LLMGenerationError(
+                        f"move action targeted an out-of-bounds position ({new_x}, {new_y})"
+                    ) from exc
+                return agent_state.model_copy(update={"position": new_position})
 
             case ActionType.SEND_MESSAGE:
                 to_agent = _require_str(payload, "to_agent", action.action_type)

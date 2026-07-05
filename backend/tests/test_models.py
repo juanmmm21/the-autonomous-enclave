@@ -5,6 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from enclave.models import (
+    GRID_HEIGHT,
+    GRID_WIDTH,
     AgentState,
     AgentStatus,
     AssetType,
@@ -47,6 +49,20 @@ def test_decimal_balance_serializes_as_string_in_json() -> None:
 
     assert payload["balance"] == "123.45"
     assert isinstance(payload["balance"], str)
+
+
+def test_position_accepts_coordinates_within_grid_bounds() -> None:
+    position = Position(x=GRID_WIDTH - 1, y=GRID_HEIGHT - 1)
+
+    assert position.x == GRID_WIDTH - 1
+    assert position.y == GRID_HEIGHT - 1
+
+
+def test_position_rejects_coordinates_outside_grid_bounds() -> None:
+    with pytest.raises(ValidationError):
+        Position(x=GRID_WIDTH, y=0)
+    with pytest.raises(ValidationError):
+        Position(x=0, y=GRID_HEIGHT)
 
 
 def test_market_offer_rejects_non_positive_quantity() -> None:

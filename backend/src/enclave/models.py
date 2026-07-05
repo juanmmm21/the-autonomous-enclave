@@ -75,9 +75,15 @@ class ActionType(StrEnum):
     IDLE = "idle"
 
 
+# Debe coincidir con GRID_WIDTH/GRID_HEIGHT en frontend/src/components/phaser/MainScene.ts,
+# que renderiza el mapa sobre el que se mueven estas coordenadas.
+GRID_WIDTH = 20
+GRID_HEIGHT = 15
+
+
 class Position(BaseModel):
-    x: int = Field(ge=0)
-    y: int = Field(ge=0)
+    x: int = Field(ge=0, lt=GRID_WIDTH)
+    y: int = Field(ge=0, lt=GRID_HEIGHT)
 
 
 class AgentState(MoneyModel):
