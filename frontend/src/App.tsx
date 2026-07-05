@@ -20,6 +20,13 @@ export function App() {
     [agents, selectedAgentId],
   );
 
+  // El vaciado se declara ANTES que el append: al cambiar de agente ambos efectos
+  // se disparan en el mismo commit y, en orden de declaración, primero se limpia
+  // el log del agente anterior y después se añade el razonamiento del nuevo.
+  useEffect(() => {
+    setReasoningLog([]);
+  }, [selectedAgentId]);
+
   useEffect(() => {
     if (selectedAgent?.last_reasoning) {
       setReasoningLog((previous) =>
@@ -30,10 +37,6 @@ export function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo reacciona a nuevo razonamiento del agente seleccionado
   }, [selectedAgent?.last_reasoning]);
-
-  useEffect(() => {
-    setReasoningLog([]);
-  }, [selectedAgentId]);
 
   return (
     <div className="min-h-screen bg-enclave-bg p-6">

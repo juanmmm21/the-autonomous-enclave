@@ -13,7 +13,9 @@ async function postIntervention(path: string, body: Record<string, unknown>): Pr
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = (await response.json()) as { detail?: string };
+    // El cuerpo puede no ser JSON (p.ej. un 502 del proxy): en ese caso se
+    // conserva el mensaje genérico con el status en lugar de un error de parseo.
+    const payload = (await response.json().catch(() => ({}))) as { detail?: string };
     throw new Error(payload.detail ?? `intervention '${path}' failed with ${response.status}`);
   }
 }
