@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from enclave.exceptions import LLMGenerationError
+from enclave.exceptions import EnclaveError, LLMGenerationError
 from enclave.models import AgentState, AgentStatus, EconomicIndicators, TickEvent
 from enclave.protocols import MemoryStore
 from enclave.services.agent_runtime import AgentRuntime
@@ -76,8 +76,10 @@ class TickEngine:
     def set_inference_quota(self, agent_id: str, quota: int) -> AgentState:
         """Consola de Intervención Divina: apagón tecnológico (o ampliación) de
         los slots de inferencia de un agente, con efecto inmediato."""
-        self._quotas.set_quota(agent_id, quota)
+        # El snapshot se resuelve antes de tocar el ledger: si el agente no existe,
+        # el KeyError sale limpio sin dejar una cuenta fantasma en las cuotas.
         updated = self._agents[agent_id].model_copy(update={"inference_quota": quota})
+        self._quotas.set_quota(agent_id, quota)
         self._agents[agent_id] = updated
         return updated
 
@@ -129,6 +131,12 @@ class TickEngine:
     async def _run_agent_tick(self, agent_id: str, agent_state: AgentState) -> AgentState:
         system_prompt = self._system_prompts[agent_id]
 
+        if agent_state.status is AgentStatus.SLEEPING:
+            # El sueño dura exactamente un tick: al siguiente impulso el agente
+            # despierta y vuelve a participar; sin este reset quedaría marcado
+            # como dormido para siempre aunque siga actuando.
+            agent_state = agent_state.model_copy(update={"status": AgentStatus.ALIVE})
+
         try:
             context = await self._runtime.perceive(agent_state, self._energy_price, self._tick)
             action = await self._runtime.think(system_prompt, context)
@@ -137,6 +145,14 @@ class TickEngine:
             self._daily_log[agent_id].append(f"[tick {self._tick}] {action.reasoning}")
         except LLMGenerationError:
             logger.exception("agent %s produced an invalid action on tick %d", agent_id, self._tick)
+        except EnclaveError:
+            # Acción sintácticamente válida pero económicamente imposible (fondos o
+            # cuota insuficientes, contrato inexistente): se descarta sin efecto.
+            logger.exception(
+                "agent %s attempted an economically invalid action on tick %d",
+                agent_id,
+                self._tick,
+            )
         except Exception:
             # Fallos de infraestructura (Redis, Qdrant, Ollama caído...) no deben tumbar
             # el tick de toda la colonia por culpa de un único ciudadano.

@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from decimal import Decimal
 
+from enclave.exceptions import LLMGenerationError
 from enclave.models import JudgeRuling
 from enclave.protocols import JudgeBackend, TrustLedger
 from enclave.services.contracts import ContractRegistry
@@ -56,9 +58,18 @@ class JudgeAgent:
                 f"Términos: {contract.terms}\n"
                 f"Historial de transacciones entre ambas partes:\n{history_text}"
             )
-            verdict = await self._backend.adjudicate(
-                _JUDGE_SYSTEM_PROMPT, contract, dispute_context
-            )
+            try:
+                verdict = await self._backend.adjudicate(
+                    _JUDGE_SYSTEM_PROMPT, contract, dispute_context
+                )
+            except LLMGenerationError:
+                # El contrato se deja en DISPUTED para reintentarlo en el próximo
+                # tick; un veredicto ilegible no debe bloquear al resto de disputas.
+                logger.exception(
+                    "judge failed to produce a valid verdict for contract %s",
+                    contract.contract_id,
+                )
+                continue
 
             valid_parties = {contract.party_a, contract.party_b}
             if verdict.at_fault_agent not in valid_parties:
@@ -73,7 +84,16 @@ class JudgeAgent:
                 contract.party_b if verdict.at_fault_agent == contract.party_a else contract.party_a
             )
 
-            self._bank.apply_penalty(verdict.at_fault_agent, verdict.penalty, tick)
+            # La multa se limita al balance disponible (mismo criterio que el coste
+            # pasivo): un culpable insolvente paga lo que tiene, sin abortar el fallo.
+            # Un firmante inventado por el LLM puede no tener cuenta: se trata como 0.
+            try:
+                available = self._bank.get_balance(verdict.at_fault_agent)
+            except KeyError:
+                available = Decimal("0")
+            applied_penalty = min(verdict.penalty, available)
+            if applied_penalty > 0:
+                self._bank.apply_penalty(verdict.at_fault_agent, applied_penalty, tick)
             self._trust.adjust_trust(injured_party, verdict.at_fault_agent, TRUST_PENALTY_ON_BREACH)
             self._contracts.mark_breached(contract.contract_id)
 
@@ -83,7 +103,7 @@ class JudgeAgent:
                     contract_id=contract.contract_id,
                     at_fault_agent=verdict.at_fault_agent,
                     verdict=verdict.verdict,
-                    penalty=verdict.penalty,
+                    penalty=applied_penalty,
                     ruled_at_tick=tick,
                 )
             )

@@ -26,6 +26,8 @@ class InferenceQuotaLedger:
     def set_quota(self, agent_id: str, quota: int) -> None:
         """Consola de Intervención Divina: fija la cuota directamente (apagón
         tecnológico o ampliación), sin que medie una transferencia entre agentes."""
+        if quota < 0:
+            raise ValueError("inference quota cannot be negative")
         self._quotas[agent_id] = quota
 
     def transfer_inference_quota(self, from_agent: str, to_agent: str, quantity: int) -> None:

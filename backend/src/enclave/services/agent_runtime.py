@@ -1,5 +1,6 @@
 """Ciclo Perceive -> Think -> Act de un único agente para un tick dado.
-El `TickEngine` invoca `AgentRuntime.run_tick` para cada ciudadano vivo."""
+El `TickEngine` invoca `perceive`, `think` y `act` en secuencia para cada
+ciudadano vivo en cada tick."""
 
 from __future__ import annotations
 
@@ -32,6 +33,18 @@ def _require_str(payload: dict[str, str | int | float], key: str, action: Action
     if not isinstance(value, str) or not value:
         raise LLMGenerationError(f"action {action} requires a non-empty string field '{key}'")
     return value
+
+
+def _coerce_int(value: str | int | float, key: str, action: ActionType) -> int:
+    # Los modelos locales a veces emiten enteros como string ("3") o float (3.0);
+    # cualquier otra cosa ("norte", "3.5"...) es una acción malformada, no un
+    # fallo de infraestructura.
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise LLMGenerationError(
+            f"action {action} field '{key}' is not a valid integer: {value!r}"
+        ) from exc
 
 
 def _require_decimal(
@@ -94,8 +107,10 @@ class AgentRuntime:
 
         match action.action_type:
             case ActionType.MOVE:
-                new_x = int(payload.get("x", agent_state.position.x))
-                new_y = int(payload.get("y", agent_state.position.y))
+                raw_x = payload.get("x", agent_state.position.x)
+                raw_y = payload.get("y", agent_state.position.y)
+                new_x = _coerce_int(raw_x, "x", action.action_type)
+                new_y = _coerce_int(raw_y, "y", action.action_type)
                 try:
                     new_position = Position(x=new_x, y=new_y)
                 except ValidationError as exc:
@@ -120,8 +135,14 @@ class AgentRuntime:
                 return agent_state
 
             case ActionType.POST_OFFER:
-                asset_type = _require_str(payload, "asset_type", action.action_type)
-                quantity = int(payload.get("quantity", 0))
+                raw_asset_type = _require_str(payload, "asset_type", action.action_type)
+                try:
+                    asset_type = AssetType(raw_asset_type)
+                except ValueError as exc:
+                    raise LLMGenerationError(
+                        f"post_offer asset_type '{raw_asset_type}' is not a tradable asset"
+                    ) from exc
+                quantity = _coerce_int(payload.get("quantity", 0), "quantity", action.action_type)
                 unit_price = _require_decimal(payload, "unit_price", action.action_type)
                 if quantity <= 0:
                     raise LLMGenerationError("post_offer requires a positive integer 'quantity'")
@@ -129,7 +150,7 @@ class AgentRuntime:
                     MarketOffer(
                         offer_id=str(uuid.uuid4()),
                         seller_id=agent_id,
-                        asset_type=asset_type,  # type: ignore[arg-type]
+                        asset_type=asset_type,
                         quantity=quantity,
                         unit_price=unit_price,
                         created_at_tick=tick,

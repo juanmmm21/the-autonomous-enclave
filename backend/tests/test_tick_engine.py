@@ -1,9 +1,19 @@
+import asyncio
 from decimal import Decimal
 
 import pytest
 from conftest import FakeBroker, FakeLLM, FakeMemoryStore
 
-from enclave.models import AgentState, Personality, Position
+from enclave.main import _tick_loop
+from enclave.models import (
+    ActionType,
+    AgentAction,
+    AgentState,
+    AgentStatus,
+    PerceivedContext,
+    Personality,
+    Position,
+)
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
@@ -34,12 +44,13 @@ def _make_engine(
     memory_store: FakeMemoryStore | None = None,
     ticks_per_day: int = 3,
     tick_interval_seconds: float = 5.0,
+    llm: FakeLLM | None = None,
 ) -> tuple[TickEngine, FakeMemoryStore]:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
     quotas = InferenceQuotaLedger()
     memory = memory_store or FakeMemoryStore()
     runtime = AgentRuntime(
-        FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory, quotas
+        llm or FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory, quotas
     )
     engine = TickEngine(
         runtime,
@@ -143,6 +154,82 @@ async def test_inflation_rate_reflects_energy_price_drift_after_one_day() -> Non
         event = await engine.run_tick()
 
     assert event.indicators.inflation_rate != 0.0
+
+
+class _SleepOnceLLM(FakeLLM):
+    """Devuelve `sleep` en la primera invocación e `idle` en las siguientes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def generate_action(self, system_prompt: str, context: PerceivedContext) -> AgentAction:
+        self.calls += 1
+        action_type = ActionType.SLEEP if self.calls == 1 else ActionType.IDLE
+        return AgentAction(action_type=action_type, reasoning="cycle test")
+
+
+async def test_sleeping_agent_wakes_up_on_the_next_tick() -> None:
+    engine, _ = _make_engine(llm=_SleepOnceLLM())
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    await engine.run_tick()
+    assert engine.agent_snapshot("agent-1").status is AgentStatus.SLEEPING
+
+    await engine.run_tick()
+    assert engine.agent_snapshot("agent-1").status is AgentStatus.ALIVE
+
+
+async def test_run_tick_survives_an_economically_invalid_action() -> None:
+    # El agente intenta transferir más SimCoin del que tiene: la acción se
+    # descarta, pero el tick global continúa y el coste pasivo se cobra igual.
+    overdraft = AgentAction(
+        action_type=ActionType.TRANSFER,
+        reasoning="spending beyond my means",
+        payload={"to_agent": "agent-2", "amount": "9999"},
+    )
+    engine, _ = _make_engine(llm=FakeLLM(overdraft))
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    engine.register_agent(_make_agent_state("agent-2"), system_prompt="be productive")
+
+    event = await engine.run_tick()
+
+    assert event.tick == 1
+    assert engine.agent_snapshot("agent-1").balance == Decimal("49.0")
+    assert engine.agent_snapshot("agent-2").balance == Decimal("49.0")
+
+
+class _ExplodingJudge:
+    """Doble del Agente Juez cuya revisión siempre falla."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def review_disputed_contracts(self, tick: int) -> list[object]:
+        self.calls += 1
+        raise RuntimeError("judge model returned garbage")
+
+
+async def test_tick_loop_keeps_running_when_the_judge_fails() -> None:
+    engine, _ = _make_engine()
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    judge = _ExplodingJudge()
+
+    task = asyncio.create_task(_tick_loop(engine, judge, interval_seconds=0.001))  # type: ignore[arg-type]
+
+    async def _wait_for_ticks() -> None:
+        while engine.current_tick < 3:
+            await asyncio.sleep(0.001)
+
+    try:
+        await asyncio.wait_for(_wait_for_ticks(), timeout=5.0)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    # El reloj siguió avanzando pese a que cada revisión del Juez explotó.
+    assert engine.current_tick >= 3
+    assert judge.calls >= 1
 
 
 async def test_transactions_per_minute_matches_real_tick_cadence() -> None:

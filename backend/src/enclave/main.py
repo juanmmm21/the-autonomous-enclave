@@ -17,7 +17,7 @@ from enclave.api.v1.interventions import router as interventions_router
 from enclave.api.v1.router import router as v1_router
 from enclave.api.v1.websocket import TelemetryHub
 from enclave.api.v1.websocket import router as websocket_router
-from enclave.config import Settings, get_settings
+from enclave.config import get_settings
 from enclave.seed import seed_initial_citizens
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
@@ -35,8 +35,14 @@ logger = logging.getLogger("enclave.main")
 async def _tick_loop(engine: TickEngine, judge: JudgeAgent, interval_seconds: float) -> None:
     while True:
         await asyncio.sleep(interval_seconds)
-        await engine.run_tick()
-        await judge.review_disputed_contracts(engine.current_tick)
+        try:
+            await engine.run_tick()
+            await judge.review_disputed_contracts(engine.current_tick)
+        except Exception:
+            # Una iteración fallida no debe matar silenciosamente el reloj de toda
+            # la simulación: se registra el error y se reintenta en el próximo tick.
+            # (CancelledError no se captura aquí: hereda de BaseException en 3.11+.)
+            logger.exception("tick loop iteration failed at tick %d", engine.current_tick)
 
 
 @asynccontextmanager
@@ -86,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("enclave shut down cleanly")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app() -> FastAPI:
     app = FastAPI(title="The Autonomous Enclave", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,

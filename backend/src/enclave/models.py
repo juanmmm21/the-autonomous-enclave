@@ -12,15 +12,13 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 SimCoin = Annotated[Decimal, Field(description="Monto expresado en SimCoin")]
 
 
 class MoneyModel(BaseModel):
     """Base para modelos con campos `Decimal`: se serializan como string en JSON."""
-
-    model_config = ConfigDict(frozen=False)
 
     @field_serializer("*", when_used="json", check_fields=False)
     def _serialize_decimal(self, value: object) -> object:
@@ -147,7 +145,8 @@ class JudgeVerdict(MoneyModel):
 
     at_fault_agent: str
     verdict: str
-    penalty: SimCoin
+    # Una "multa negativa" premiaría al infractor: se rechaza como veredicto malformado.
+    penalty: Annotated[SimCoin, Field(ge=0)]
 
 
 class InboxMessage(BaseModel):

@@ -215,6 +215,36 @@ async def test_act_file_dispute_marks_contract_disputed(
     assert contract.contract_id in disputed_ids
 
 
+async def test_act_move_with_non_numeric_coordinates_raises_llm_generation_error(
+    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+) -> None:
+    runtime = _make_runtime(broker, bank, contracts)
+    agent_state = _make_agent_state()
+    action = AgentAction(
+        action_type=ActionType.MOVE, reasoning="confused", payload={"x": "north", "y": 2}
+    )
+
+    with pytest.raises(LLMGenerationError):
+        await runtime.act(agent_state, action, tick=1)
+
+
+async def test_act_post_offer_with_unknown_asset_type_raises_llm_generation_error(
+    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+) -> None:
+    runtime = _make_runtime(broker, bank, contracts)
+    agent_state = _make_agent_state()
+    action = AgentAction(
+        action_type=ActionType.POST_OFFER,
+        reasoning="selling something imaginary",
+        payload={"asset_type": "magic_beans", "quantity": 1, "unit_price": "5.0"},
+    )
+
+    with pytest.raises(LLMGenerationError):
+        await runtime.act(agent_state, action, tick=1)
+
+    assert broker.published_offers == []
+
+
 async def test_act_transfer_without_amount_raises_llm_generation_error(
     broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
 ) -> None:
