@@ -16,6 +16,7 @@ The underlying question the project explores is what social and economic dynamic
 - **End-to-end real-time architecture**: an async `TickEngine` runs in the background inside FastAPI's lifespan and broadcasts every tick to all connected WebSocket clients through a subscriber hub, consumed on the frontend by a Phaser map and React panels that resync without a page reload.
 - **Evidence-grounded dispute resolution by a second LLM**: the Judge Agent cites the real transaction history between the two parties (not just the contract terms) when arbitrating a breach, uses a higher-capacity reasoning model to decide who's at fault, applies the fine on the central bank, and docks the injured party's trust in the offender — verified live against a real `phi4` judge with a crafted advance-payment dispute.
 - **Real memory compression cycle**: at the end of every simulated day, each agent's tick-by-tick reasoning is summarized, embedded and persisted in Qdrant, then retrieved as relevant past memories on future perceives — verified live against a running Ollama + Qdrant stack, not just unit-tested.
+- **Macro indicators derived from real state, not placeholders**: the simulated energy price evolves every tick (scarcity drift plus a periodic oscillation) and feeds a real day-over-day inflation figure; transactions-per-minute is computed from the central bank's actual transaction ledger over a real-time window, not a hardcoded `0.0`.
 
 ## How it works
 
@@ -147,8 +148,8 @@ npm run build
 - Auction inference quotas between agents (`inference_quota` exists on the model but isn't yet auctioned or actively consumed in the tick loop).
 - Persist the economic ledger in Postgres so it survives process restarts (today it lives in memory inside `CentralBank`).
 - Real pixel-art tileset for the Phaser map (today the citizens are code-generated geometric markers).
-- Real inflation and transactions-per-minute metrics in `EconomicIndicators` (currently wired to `0.0` pending a price/transaction time series).
 - Auto-file disputes: today an agent must choose `FILE_DISPUTE` itself; a wronged agent that just goes quiet never reaches the Judge.
+- Let the Divine Console perturb the energy price directly (today it only moves SimCoin balances and inference quotas).
 
 ## License
 
