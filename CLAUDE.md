@@ -31,19 +31,24 @@ the-autonomous-enclave/
 ├── backend/
 │   ├── pyproject.toml
 │   ├── src/enclave/
-│   │   ├── models.py          # tipos de dominio (Agent, Contract, Transaction, MarketOffer...)
-│   │   ├── protocols.py       # interfaces: LLMBackend, MemoryStore, MessageBroker
+│   │   ├── models.py          # tipos de dominio (AgentState, Contract, Transaction, MarketOffer...)
+│   │   ├── protocols.py       # interfaces: LLMBackend, JudgeBackend, MemoryStore, MessageBroker, TrustLedger, ResourceLedger
+│   │   ├── exceptions.py      # errores de dominio (fondos insuficientes, acción malformada...)
 │   │   ├── config.py          # Settings (pydantic-settings)
+│   │   ├── seed.py            # población inicial de ciudadanos
 │   │   ├── services/
-│   │   │   ├── llm_client.py      # OllamaLLMBackend
+│   │   │   ├── llm_client.py      # OllamaLLMBackend / OllamaJudgeBackend
 │   │   │   ├── message_broker.py  # RedisMessageBroker
 │   │   │   ├── memory_store.py    # QdrantMemoryStore
 │   │   │   ├── economy.py         # Banco Central: balances, coste pasivo, bancarrota
+│   │   │   ├── inference_market.py # ledger de cuotas de inferencia (recurso escaso)
+│   │   │   ├── contracts.py       # registro de contratos comerciales
 │   │   │   ├── agent_runtime.py   # ciclo perceive/think/act de un agente
 │   │   │   ├── tick_engine.py     # reloj global, orquesta a todos los agentes
 │   │   │   └── judge.py           # Agente Juez: resuelve disputas contractuales
 │   │   ├── api/v1/
 │   │   │   ├── router.py      # endpoints REST
+│   │   │   ├── interventions.py # Consola de Intervención Divina
 │   │   │   └── websocket.py   # telemetría en tiempo real
 │   │   └── main.py            # FastAPI app factory
 │   └── tests/

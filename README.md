@@ -61,7 +61,7 @@ the-autonomous-enclave/
 │   │   │   ├── interventions.py    # /interventions/devalue|subsidize|blackout
 │   │   │   └── websocket.py        # /ws/telemetry + TelemetryHub
 │   │   └── main.py             # FastAPI app factory + lifespan (seeds citizens, starts the TickEngine)
-│   └── tests/                  # pytest: economy, models, agent cycle, tick engine, seeding
+│   └── tests/                  # pytest: economy, models, agent cycle, tick engine, judge, seeding
 └── frontend/
     └── src/
         ├── components/
