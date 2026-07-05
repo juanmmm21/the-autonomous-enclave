@@ -3,7 +3,12 @@ from decimal import Decimal
 import pytest
 
 from enclave.exceptions import InsufficientFundsError
-from enclave.services.economy import CENTRAL_BANK_TREASURY_ID, CentralBank, compute_gini_index
+from enclave.services.economy import (
+    CENTRAL_BANK_TREASURY_ID,
+    CentralBank,
+    compute_energy_price,
+    compute_gini_index,
+)
 
 
 @pytest.fixture
@@ -141,6 +146,15 @@ def test_transactions_between_includes_passive_cost_and_penalty_entries(
     assert [t.reason for t in history] == ["passive_tick_cost", "judge_penalty"]
 
 
+def test_transactions_since_excludes_earlier_ticks(bank: CentralBank) -> None:
+    bank.transfer("alice", "bob", Decimal("1.0"), "old", tick=1)
+    bank.transfer("alice", "bob", Decimal("1.0"), "recent", tick=10)
+
+    recent_only = bank.transactions_since(5)
+
+    assert [t.reason for t in recent_only] == ["recent"]
+
+
 def test_all_balances_excludes_treasury(bank: CentralBank) -> None:
     balances = bank.all_balances()
 
@@ -163,3 +177,23 @@ def test_gini_index_reflects_concentration() -> None:
 
     assert equal < concentrated
     assert 0.0 <= concentrated <= 1.0
+
+
+def test_energy_price_at_tick_zero_equals_base_price() -> None:
+    assert compute_energy_price(Decimal("1.0"), tick=0) == Decimal("1.0")
+
+
+def test_energy_price_is_deterministic_for_the_same_tick() -> None:
+    first = compute_energy_price(Decimal("1.0"), tick=7)
+    second = compute_energy_price(Decimal("1.0"), tick=7)
+
+    assert first == second
+
+
+def test_energy_price_trends_upward_over_full_oscillation_cycles() -> None:
+    # A los mismos puntos de la onda (múltiplos del periodo), la tendencia alcista
+    # por escasez debe dominar y el precio debe ser mayor con más ticks transcurridos.
+    early = compute_energy_price(Decimal("1.0"), tick=12)
+    later = compute_energy_price(Decimal("1.0"), tick=120)
+
+    assert later > early

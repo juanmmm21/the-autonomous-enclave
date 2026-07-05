@@ -5,6 +5,7 @@ sin cambiar la interfaz pública de `CentralBank`."""
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -13,6 +14,13 @@ from enclave.exceptions import InsufficientFundsError
 from enclave.models import Transaction
 
 CENTRAL_BANK_TREASURY_ID = "central_bank_treasury"
+
+ENERGY_DRIFT_PER_TICK = 0.002
+"""Tendencia alcista por escasez computacional creciente."""
+ENERGY_WAVE_AMPLITUDE = 0.15
+"""Amplitud de la oscilación de precio (+-15% sobre la tendencia)."""
+ENERGY_WAVE_PERIOD_TICKS = 12
+"""Ticks que dura un ciclo completo de oscilación del precio."""
 
 
 class CentralBank:
@@ -37,6 +45,11 @@ class CentralBank:
             ),
             key=lambda transaction: transaction.tick,
         )
+
+    def transactions_since(self, tick: int) -> list[Transaction]:
+        """Todas las transacciones registradas desde `tick` (inclusive). Lo usa
+        el `TickEngine` para calcular el volumen real de transacciones por minuto."""
+        return [transaction for transaction in self._ledger if transaction.tick >= tick]
 
     def open_account(self, agent_id: str, initial_balance: Decimal) -> None:
         self._balances[agent_id] = initial_balance
@@ -156,3 +169,13 @@ def compute_gini_index(balances: list[Decimal]) -> float:
 
     cumulative_weighted_sum = sum((i + 1) * balance for i, balance in enumerate(positive_balances))
     return (2 * cumulative_weighted_sum) / (n * total) - (n + 1) / n
+
+
+def compute_energy_price(base_price: Decimal, tick: int) -> Decimal:
+    """Precio de la energía simulada en un tick dado: una tendencia alcista
+    (escasez computacional creciente) modulada por una oscilación periódica,
+    para que los agentes tengan una señal de entorno real que monitorizar."""
+    drift = 1 + ENERGY_DRIFT_PER_TICK * tick
+    wave = 1 + ENERGY_WAVE_AMPLITUDE * math.sin(2 * math.pi * tick / ENERGY_WAVE_PERIOD_TICKS)
+    price = float(base_price) * drift * wave
+    return Decimal(str(round(price, 4)))

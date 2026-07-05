@@ -15,7 +15,7 @@ from enclave.exceptions import LLMGenerationError
 from enclave.models import AgentState, AgentStatus, EconomicIndicators, TickEvent
 from enclave.protocols import MemoryStore
 from enclave.services.agent_runtime import AgentRuntime
-from enclave.services.economy import CentralBank, compute_gini_index
+from enclave.services.economy import CentralBank, compute_energy_price, compute_gini_index
 
 logger = logging.getLogger("enclave.tick_engine")
 
@@ -32,17 +32,21 @@ class TickEngine:
         memory_store: MemoryStore,
         energy_price: Decimal,
         ticks_per_day: int = DEFAULT_TICKS_PER_DAY,
+        tick_interval_seconds: float = 5.0,
         on_tick: TickListener | None = None,
     ) -> None:
         self._runtime = runtime
         self._bank = bank
         self._memory = memory_store
+        self._base_energy_price = energy_price
         self._energy_price = energy_price
         self._ticks_per_day = ticks_per_day
+        self._tick_interval_seconds = tick_interval_seconds
         self._on_tick = on_tick
         self._agents: dict[str, AgentState] = {}
         self._system_prompts: dict[str, str] = {}
         self._daily_log: dict[str, list[str]] = {}
+        self._energy_price_history: list[Decimal] = []
         self._tick = 0
 
     @property
@@ -95,6 +99,8 @@ class TickEngine:
 
     async def run_tick(self) -> TickEvent:
         self._tick += 1
+        self._energy_price = compute_energy_price(self._base_energy_price, self._tick)
+        self._energy_price_history.append(self._energy_price)
 
         for agent_id, agent_state in list(self._agents.items()):
             if agent_state.status in (AgentStatus.BANKRUPT, AgentStatus.TERMINATED):
@@ -164,7 +170,35 @@ class TickEngine:
         gdp = float(sum(balances)) if balances else 0.0
         return EconomicIndicators(
             gini_index=compute_gini_index(balances),
-            inflation_rate=0.0,
+            inflation_rate=self._compute_inflation_rate(),
             virtual_gdp=gdp,
-            transactions_per_minute=0.0,
+            transactions_per_minute=self._compute_transactions_per_minute(),
         )
+
+    def _compute_inflation_rate(self) -> float:
+        """Variación del precio de la energía frente al mismo momento del día
+        anterior. `0.0` hasta que haya pasado al menos un día completo."""
+        if len(self._energy_price_history) <= self._ticks_per_day:
+            return 0.0
+
+        current_price = float(self._energy_price_history[-1])
+        price_one_day_ago = float(self._energy_price_history[-1 - self._ticks_per_day])
+        if price_one_day_ago == 0:
+            return 0.0
+        return (current_price - price_one_day_ago) / price_one_day_ago
+
+    def _compute_transactions_per_minute(self) -> float:
+        """Volumen real de transacciones del ledger normalizado a un ritmo por
+        minuto, usando la ventana de ticks equivalente a los últimos 60s reales."""
+        if self._tick_interval_seconds <= 0:
+            return 0.0
+
+        window_ticks = max(1, round(60 / self._tick_interval_seconds))
+        window_start_tick = max(1, self._tick - window_ticks + 1)
+        transaction_count = len(self._bank.transactions_since(window_start_tick))
+
+        ticks_covered = min(self._tick, window_ticks)
+        minutes_covered = (ticks_covered * self._tick_interval_seconds) / 60
+        if minutes_covered <= 0:
+            return 0.0
+        return transaction_count / minutes_covered

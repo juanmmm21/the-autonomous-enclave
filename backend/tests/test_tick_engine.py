@@ -32,12 +32,18 @@ def _make_engine(
     broker: FakeBroker | None = None,
     memory_store: FakeMemoryStore | None = None,
     ticks_per_day: int = 3,
+    tick_interval_seconds: float = 5.0,
 ) -> tuple[TickEngine, FakeMemoryStore]:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
     memory = memory_store or FakeMemoryStore()
     runtime = AgentRuntime(FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory)
     engine = TickEngine(
-        runtime, bank, memory, energy_price=Decimal("1.0"), ticks_per_day=ticks_per_day
+        runtime,
+        bank,
+        memory,
+        energy_price=Decimal("1.0"),
+        ticks_per_day=ticks_per_day,
+        tick_interval_seconds=tick_interval_seconds,
     )
     return engine, memory
 
@@ -113,3 +119,33 @@ async def test_adjust_trust_on_unknown_agent_is_a_no_op() -> None:
     engine, _ = _make_engine()
 
     engine.adjust_trust("ghost", "agent-2", -0.3)  # no debe lanzar
+
+
+async def test_inflation_rate_is_zero_before_a_full_day_has_elapsed() -> None:
+    engine, _ = _make_engine(ticks_per_day=3)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    event = await engine.run_tick()
+
+    assert event.indicators.inflation_rate == 0.0
+
+
+async def test_inflation_rate_reflects_energy_price_drift_after_one_day() -> None:
+    engine, _ = _make_engine(ticks_per_day=2)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    for _ in range(3):
+        event = await engine.run_tick()
+
+    assert event.indicators.inflation_rate != 0.0
+
+
+async def test_transactions_per_minute_matches_real_tick_cadence() -> None:
+    # Con un coste pasivo por tick y un intervalo de 5s, el ritmo esperado es
+    # de 60/5 = 12 transacciones por minuto con un único agente registrado.
+    engine, _ = _make_engine(tick_interval_seconds=5.0)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    event = await engine.run_tick()
+
+    assert event.indicators.transactions_per_minute == pytest.approx(12.0)

@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         memory_store,
         energy_price=Decimal("1.0"),
         ticks_per_day=settings.ticks_per_day,
+        tick_interval_seconds=settings.tick_interval_seconds,
         on_tick=telemetry_hub.broadcast,
     )
     judge = JudgeAgent(judge_backend, contracts, bank, tick_engine)
