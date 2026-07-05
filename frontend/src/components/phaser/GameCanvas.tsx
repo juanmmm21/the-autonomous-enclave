@@ -25,7 +25,8 @@ export function GameCanvas({ agents, onSelectAgent }: GameCanvasProps) {
       parent: containerRef.current,
       width: GRID_WIDTH * TILE_SIZE,
       height: GRID_HEIGHT * TILE_SIZE,
-      backgroundColor: "#0b0f1a",
+      backgroundColor: "#0a0e14",
+      pixelArt: true, // nearest-neighbor: mantiene nítido el tileset pixel-art
       scene: [MainScene],
     });
     gameRef.current = game;

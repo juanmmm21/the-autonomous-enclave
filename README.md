@@ -19,7 +19,7 @@ The underlying question the project explores is what social and economic dynamic
 - **Real memory compression cycle**: at the end of every simulated day, each agent's tick-by-tick reasoning is summarized, embedded and persisted in Qdrant, then retrieved as relevant past memories on future perceives — verified live against a running Ollama + Qdrant stack, not just unit-tested.
 - **Macro indicators derived from real state, not placeholders**: the simulated energy price evolves every tick (scarcity drift plus a periodic oscillation) and feeds a real day-over-day inflation figure; transactions-per-minute is computed from the central bank's actual transaction ledger over a real-time window, not a hardcoded `0.0`.
 - **State survives a restart without slowing down the simulation**: `CentralBank` and the inference quota ledger stay in memory during execution (no DB round-trip on the hot per-tick path), but a Postgres checkpoint is taken every simulated day and on clean shutdown, then restored on the next boot — verified live by restarting the process twice and confirming each citizen came back with its real, persisted balance instead of its seed default.
-- **A pixel-art map with zero external art assets**: the ground tiles, citizen sprites and decorative buildings are generated procedurally at runtime via Phaser's `Graphics.generateTexture`, not loaded from image files.
+- **A pixel-art map with reproducible, code-generated art**: every ground tile, animated citizen spritesheet and decorative building is drawn pixel-by-pixel by a build-time script (`scripts/generate_tileset.py`, Python + Pillow) and committed as PNGs — no hand-authored or third-party art, and the whole tileset can be regenerated or restyled by editing one script.
 
 ## How it works
 
@@ -40,6 +40,7 @@ The underlying question the project explores is what social and economic dynamic
 ```text
 the-autonomous-enclave/
 ├── docs/vision.md              # original project vision document
+├── scripts/generate_tileset.py # build-time pixel-art generator (Python + Pillow) -> frontend/public/tileset/
 ├── docker-compose.yml          # Redis (broker) + Qdrant (vector memory) + Postgres (checkpoints) for local dev
 ├── backend/
 │   ├── pyproject.toml
@@ -69,7 +70,7 @@ the-autonomous-enclave/
 └── frontend/
     └── src/
         ├── components/
-        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts + tileset.ts (procedural pixel-art map)
+        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts + tileset.ts (pixel-art map + asset manifest)
         │   └── dashboard/       # EconomyPanel, ConsciousnessInspector, DivineConsole
         ├── hooks/useTelemetrySocket.ts  # WebSocket with automatic reconnection
         └── types/api.ts         # contract shared with the backend

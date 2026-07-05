@@ -1,143 +1,185 @@
-import Phaser from "phaser";
-
 import { TILE_SIZE } from "./mapConstants";
 
-export const CITIZEN_TEXTURE = "tileset-citizen";
-export const GROUND_TILE_TEXTURE = "tileset-ground";
-export const MARKET_TEXTURE = "tileset-market";
-export const BANK_TEXTURE = "tileset-bank";
+/**
+ * Manifiesto del tileset pixel-art y layout del mapa de Silicon Polis.
+ *
+ * Los PNG de `frontend/public/tileset/` se generan en build-time con
+ * `scripts/generate_tileset.py` (Python + Pillow, herramienta local del repo,
+ * no una dependencia del proyecto) y se cargan como assets normales de Phaser
+ * en `MainScene.preload()`. Aquí solo viven los datos: qué archivos cargar,
+ * qué baldosa corresponde a cada celda del grid y dónde se coloca cada
+ * elemento decorativo.
+ */
+
+export const TILESET_BASE = "/tileset";
+
+export interface ImageAssetDef {
+  key: string;
+  file: string;
+}
+
+export interface SheetAssetDef extends ImageAssetDef {
+  frameWidth: number;
+  frameHeight: number;
+}
+
+export const IMAGE_ASSETS: readonly ImageAssetDef[] = [
+  { key: "tile-grass-a", file: "grass_a.png" },
+  { key: "tile-grass-b", file: "grass_b.png" },
+  { key: "tile-grass-c", file: "grass_c.png" },
+  { key: "tile-grass-d", file: "grass_d.png" },
+  { key: "tile-path-a", file: "path_a.png" },
+  { key: "tile-path-b", file: "path_b.png" },
+  { key: "tile-plaza-a", file: "plaza_a.png" },
+  { key: "tile-plaza-b", file: "plaza_b.png" },
+  { key: "plaza-emblem", file: "plaza_emblem.png" },
+  { key: "prop-tree-a", file: "tree_a.png" },
+  { key: "prop-tree-b", file: "tree_b.png" },
+  { key: "prop-lamp", file: "lamp.png" },
+  { key: "prop-antenna", file: "antenna.png" },
+  { key: "prop-solar", file: "solar.png" },
+  { key: "prop-crates", file: "crates.png" },
+  { key: "prop-shadow", file: "shadow.png" },
+  { key: "building-market", file: "market.png" },
+  { key: "building-bank", file: "bank.png" },
+  { key: "building-hall", file: "hall.png" },
+];
+
+export const CITIZEN_SHEET_KEYS = [
+  "citizen-ada",
+  "citizen-boris",
+  "citizen-clio",
+  "citizen-dorian",
+  "citizen-elena",
+] as const;
+
+export const SHEET_ASSETS: readonly SheetAssetDef[] = [
+  { key: "citizen-ada", file: "citizen_ada.png", frameWidth: 32, frameHeight: 40 },
+  { key: "citizen-boris", file: "citizen_boris.png", frameWidth: 32, frameHeight: 40 },
+  { key: "citizen-clio", file: "citizen_clio.png", frameWidth: 32, frameHeight: 40 },
+  { key: "citizen-dorian", file: "citizen_dorian.png", frameWidth: 32, frameHeight: 40 },
+  { key: "citizen-elena", file: "citizen_elena.png", frameWidth: 32, frameHeight: 40 },
+  { key: "prop-obelisk", file: "obelisk.png", frameWidth: 32, frameHeight: 48 },
+  { key: "prop-server", file: "server_rack.png", frameWidth: 24, frameHeight: 40 },
+];
 
 /**
- * Genera un pequeño tileset pixel-art directamente por código (sin depender de
- * assets externos): una baldosa de suelo, un sprite de ciudadano recoloreable
- * vía `setTint`, y dos edificios decorativos (mercado y banco) que dan
- * ambientación a la plaza sin estar ligados a lógica de juego.
+ * Cada agente sembrado (`agent-ada`, `agent-boris`, ...) tiene su propia hoja
+ * de sprites con peinado/silueta distintivos; un agente desconocido recibe una
+ * hoja determinista derivada del hash de su id.
  */
-export function generateTileset(scene: Phaser.Scene): void {
-  generateGroundTile(scene);
-  generateCitizenSprite(scene);
-  generateMarketBuilding(scene);
-  generateBankBuilding(scene);
-}
-
-function generateGroundTile(scene: Phaser.Scene): void {
-  if (scene.textures.exists(GROUND_TILE_TEXTURE)) return;
-
-  const graphics = scene.add.graphics();
-  const base = 0x1a2234;
-  const light = 0x232d42;
-  const speck = 0x2b3654;
-
-  graphics.fillStyle(base, 1);
-  graphics.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-
-  // Losetas 8x8 alternadas para dar textura de adoquinado pixel-art.
-  const cell = TILE_SIZE / 4;
-  for (let row = 0; row < 4; row += 1) {
-    for (let col = 0; col < 4; col += 1) {
-      if ((row + col) % 2 === 0) {
-        graphics.fillStyle(light, 1);
-        graphics.fillRect(col * cell, row * cell, cell, cell);
-      }
-    }
+export function citizenSheetFor(agentId: string): string {
+  const slug = agentId.toLowerCase().replace(/^agent-/, "");
+  const direct = CITIZEN_SHEET_KEYS.find((key) => key === `citizen-${slug}`);
+  if (direct) {
+    return direct;
   }
-
-  // Motas sutiles para romper la repetición del patrón.
-  graphics.fillStyle(speck, 1);
-  graphics.fillRect(3, 3, 2, 2);
-  graphics.fillRect(TILE_SIZE - 6, TILE_SIZE - 6, 2, 2);
-  graphics.fillRect(TILE_SIZE - 9, 5, 2, 2);
-
-  graphics.generateTexture(GROUND_TILE_TEXTURE, TILE_SIZE, TILE_SIZE);
-  graphics.destroy();
-}
-
-function generateCitizenSprite(scene: Phaser.Scene): void {
-  if (scene.textures.exists(CITIZEN_TEXTURE)) return;
-
-  const width = 14;
-  const height = 20;
-  const graphics = scene.add.graphics();
-
-  // Dibujado en blanco puro: cada agente lo retiñe con `setTint(color)` según
-  // su estado, sin necesidad de generar una textura por color.
-  const white = 0xffffff;
-
-  graphics.fillStyle(0x000000, 0.25);
-  graphics.fillEllipse(width / 2, height - 2, 10, 4); // sombra
-
-  graphics.fillStyle(white, 1);
-  graphics.fillRect(4, 8, 6, 9); // torso
-  graphics.fillRect(2, 9, 2, 6); // brazo izquierdo
-  graphics.fillRect(10, 9, 2, 6); // brazo derecho
-  graphics.fillRect(4, 15, 2, 4); // pierna izquierda
-  graphics.fillRect(8, 15, 2, 4); // pierna derecha
-  graphics.fillCircle(width / 2, 4, 4); // cabeza
-
-  graphics.generateTexture(CITIZEN_TEXTURE, width, height);
-  graphics.destroy();
-}
-
-function generateMarketBuilding(scene: Phaser.Scene): void {
-  if (scene.textures.exists(MARKET_TEXTURE)) return;
-
-  const size = TILE_SIZE * 1.5;
-  const graphics = scene.add.graphics();
-
-  graphics.fillStyle(0x1c1408, 1);
-  graphics.fillRect(4, size * 0.4, size - 8, size * 0.55); // caseta
-
-  graphics.fillStyle(0xb45309, 1); // toldo
-  graphics.fillTriangle(0, size * 0.45, size / 2, size * 0.1, size, size * 0.45);
-  graphics.fillStyle(0xf59e0b, 1);
-  for (let stripe = 0; stripe < 4; stripe += 1) {
-    const stripeWidth = size / 4;
-    if (stripe % 2 === 0) {
-      graphics.fillTriangle(
-        stripe * stripeWidth,
-        size * 0.45,
-        stripe * stripeWidth + stripeWidth,
-        size * 0.45,
-        size / 2,
-        size * 0.1,
-      );
-    }
+  let hash = 0;
+  for (const char of slug) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   }
-
-  graphics.fillStyle(0x78350f, 1);
-  graphics.fillRect(size * 0.4, size * 0.65, size * 0.2, size * 0.3); // puerta
-
-  graphics.generateTexture(MARKET_TEXTURE, size, size);
-  graphics.destroy();
+  return CITIZEN_SHEET_KEYS[hash % CITIZEN_SHEET_KEYS.length];
 }
 
-function generateBankBuilding(scene: Phaser.Scene): void {
-  if (scene.textures.exists(BANK_TEXTURE)) return;
+// ---------------------------------------------------------------------------
+// Layout del suelo: plaza adoquinada central, caminos de tierra que conectan
+// los edificios y hierba con variantes en el resto del grid.
+// ---------------------------------------------------------------------------
 
-  const size = TILE_SIZE * 1.5;
-  const graphics = scene.add.graphics();
+const PLAZA = { x0: 7, y0: 5, x1: 12, y1: 9 };
 
-  graphics.fillStyle(0x1e293b, 1);
-  graphics.fillRect(2, size * 0.3, size - 4, size * 0.65); // fachada
+function isPlaza(x: number, y: number): boolean {
+  return x >= PLAZA.x0 && x <= PLAZA.x1 && y >= PLAZA.y0 && y <= PLAZA.y1;
+}
 
-  graphics.fillStyle(0x334155, 1);
-  graphics.fillRect(0, size * 0.22, size, size * 0.12); // friso del techo
+function isPath(x: number, y: number): boolean {
+  if (y === 7) return true; // avenida este-oeste
+  if (x === 10) return true; // avenida norte-sur
+  if (x === 3 && y >= 3 && y <= 6) return true; // acceso al mercado
+  if (x === 16 && y >= 3 && y <= 6) return true; // acceso al tribunal
+  if (y === 13 && x >= 11 && x <= 16) return true; // camino al banco
+  if (x === 16 && y === 12) return true; // umbral del banco
+  return false;
+}
 
-  graphics.fillStyle(0xcbd5e1, 1);
-  const columnWidth = size * 0.12;
-  const columnGap = size * 0.18;
-  for (let column = 0; column < 4; column += 1) {
-    graphics.fillRect(
-      size * 0.1 + column * columnGap,
-      size * 0.34,
-      columnWidth,
-      size * 0.5,
-    );
+/** Hash determinista por celda para elegir variantes sin aleatoriedad en runtime. */
+function cellHash(x: number, y: number): number {
+  return (((x + 1) * 73856093) ^ ((y + 1) * 19349663)) >>> 0;
+}
+
+export function groundTextureAt(x: number, y: number): string {
+  const hash = cellHash(x, y);
+  if (isPlaza(x, y)) {
+    return hash % 7 === 0 ? "tile-plaza-b" : "tile-plaza-a";
   }
-
-  graphics.fillStyle(0x0f172a, 1);
-  graphics.fillRect(size * 0.42, size * 0.68, size * 0.16, size * 0.27); // puerta
-
-  graphics.generateTexture(BANK_TEXTURE, size, size);
-  graphics.destroy();
+  if (isPath(x, y)) {
+    return hash % 5 === 0 ? "tile-path-b" : "tile-path-a";
+  }
+  const roll = hash % 33;
+  if (roll === 0) return "tile-grass-d"; // brote bioluminiscente (raro)
+  if (roll <= 3) return "tile-grass-c"; // flores
+  if (roll <= 11) return "tile-grass-b"; // matas
+  return "tile-grass-a";
 }
+
+// ---------------------------------------------------------------------------
+// Decoración: edificios y atrezzo, anclados por la base (origin 0.5, 1) para
+// poder ordenarlos por profundidad con los ciudadanos.
+// ---------------------------------------------------------------------------
+
+export interface Placement {
+  key: string;
+  x: number;
+  y: number;
+}
+
+export interface AnimatedPlacement extends Placement {
+  anim: string;
+}
+
+/** Punto medio-inferior de una celda del grid, en píxeles. */
+function tileAnchor(tileX: number, tileY: number): { x: number; y: number } {
+  return { x: (tileX + 0.5) * TILE_SIZE, y: (tileY + 1) * TILE_SIZE };
+}
+
+export const SCENERY: readonly Placement[] = [
+  // edificios (2x2 celdas, la puerta mira al sur hacia su camino de acceso)
+  { key: "building-market", x: 3 * TILE_SIZE, y: 3 * TILE_SIZE },
+  { key: "building-hall", x: 16 * TILE_SIZE, y: 3 * TILE_SIZE },
+  { key: "building-bank", x: 16 * TILE_SIZE, y: 12 * TILE_SIZE },
+  // arboleda
+  { key: "prop-tree-a", ...tileAnchor(0, 2) },
+  { key: "prop-tree-b", ...tileAnchor(5, 4) },
+  { key: "prop-tree-a", ...tileAnchor(14, 4) },
+  { key: "prop-tree-b", ...tileAnchor(18, 5) },
+  { key: "prop-tree-a", ...tileAnchor(1, 11) },
+  { key: "prop-tree-b", ...tileAnchor(6, 12) },
+  { key: "prop-tree-a", ...tileAnchor(18, 9) },
+  // farolas: esquinas de la plaza + accesos
+  { key: "prop-lamp", ...tileAnchor(7, 5) },
+  { key: "prop-lamp", ...tileAnchor(12, 5) },
+  { key: "prop-lamp", ...tileAnchor(7, 9) },
+  { key: "prop-lamp", ...tileAnchor(12, 9) },
+  { key: "prop-lamp", ...tileAnchor(2, 6) },
+  { key: "prop-lamp", ...tileAnchor(17, 8) },
+  // atrezzo urbano y tecnológico
+  { key: "prop-crates", ...tileAnchor(4, 2) },
+  { key: "prop-crates", ...tileAnchor(17, 11) },
+  { key: "prop-solar", ...tileAnchor(13, 10) },
+  { key: "prop-solar", ...tileAnchor(14, 10) },
+  { key: "prop-antenna", ...tileAnchor(19, 2) },
+];
+
+export const ANIMATED_SCENERY: readonly AnimatedPlacement[] = [
+  // obelisco holográfico en el centro de la plaza
+  { key: "prop-obelisk", x: 10 * TILE_SIZE, y: 7.875 * TILE_SIZE, anim: "obelisk-pulse" },
+  // rack de servidores junto al tribunal
+  { key: "prop-server", ...tileAnchor(18, 2), anim: "server-blink" },
+];
+
+/** Emblema de circuito bajo el obelisco, centrado en la plaza. */
+export const PLAZA_EMBLEM: Placement = {
+  key: "plaza-emblem",
+  x: 10 * TILE_SIZE,
+  y: 7.5 * TILE_SIZE,
+};
