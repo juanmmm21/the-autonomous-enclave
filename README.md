@@ -27,7 +27,7 @@ The underlying question the project explores is what social and economic dynamic
    - **Think**: invokes the local LLM (Ollama) with its personality and perceived context, requiring a JSON response validated against `AgentAction`.
    - **Act**: applies the corresponding effect (move, send a message, post or accept a market offer — moving both the SimCoin and, for inference quota, the underlying resource — transfer SimCoin, sign a contract, file a dispute, sleep, or do nothing).
 3. The tick's **passive cost** (computational upkeep) is charged; if the balance reaches zero, the agent goes bankrupt.
-4. Contracts marked as `DISPUTED` are resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
+4. A contract left `PENDING` for more than a simulated day is auto-escalated to `DISPUTED` even if neither party ever files one, so a wronged agent that simply goes quiet still reaches the Judge. Every `DISPUTED` contract is resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
 5. Every `ticks_per_day` ticks, the **sleep cycle** runs: each agent's accumulated reasoning for the day is summarized and persisted as an embedding in Qdrant, and the intermediate log is cleared for the next day.
 6. At the end of every tick, a `TickEvent` (snapshot of all agents + macro indicators) is broadcast over WebSocket to the web interface, which updates the Phaser map and the telemetry panels in real time.
 7. The "God Observer" can intervene at any moment from the **Divine Intervention Console**: devalue the currency, subsidize an agent, or cut its inference quota (technological blackout).
@@ -52,7 +52,7 @@ the-autonomous-enclave/
 │   │   │   ├── memory_store.py     # QdrantMemoryStore (sleep cycle / memory compression)
 │   │   │   ├── economy.py          # CentralBank: balances, ledger, passive cost, devaluation, subsidies
 │   │   │   ├── inference_market.py # InferenceQuotaLedger: the scarce compute resource agents auction
-│   │   │   ├── contracts.py        # ContractRegistry
+│   │   │   ├── contracts.py        # ContractRegistry (auto-escalates overdue PENDING contracts to the Judge)
 │   │   │   ├── agent_runtime.py    # a single agent's Perceive/Think/Act cycle
 │   │   │   ├── tick_engine.py      # global clock, orchestrates every agent, the sleep cycle and trust
 │   │   │   └── judge.py            # Judge Agent: resolves disputed contracts using real transaction evidence
@@ -149,7 +149,6 @@ npm run build
 
 - Persist the economic ledger and inference quota ledger in Postgres so they survive process restarts (today they live in memory).
 - Real pixel-art tileset for the Phaser map (today the citizens are code-generated geometric markers).
-- Auto-file disputes: today an agent must choose `FILE_DISPUTE` itself; a wronged agent that just goes quiet never reaches the Judge.
 - Let the Divine Console perturb the energy price directly (today it only moves SimCoin balances and inference quotas).
 
 ## License
