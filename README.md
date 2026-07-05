@@ -11,10 +11,10 @@ The underlying question the project explores is what social and economic dynamic
 ## Goal / skills demonstrated
 
 - **Orchestrating multiple stateful LLM agents**: each citizen keeps its personality, memory and inventory across ticks, with a strict JSON output contract validated against a schema (`AgentAction`) before any effect is applied to the world.
-- **Interfaces designed before implementation**: the `Protocol`s in `protocols.py` (`LLMBackend`, `JudgeBackend`, `MemoryStore`, `MessageBroker`) separate domain logic from concrete backends (Ollama, Redis, Qdrant), so any of them can be swapped without touching the rest of the system.
+- **Interfaces designed before implementation**: the `Protocol`s in `protocols.py` (`LLMBackend`, `JudgeBackend`, `MemoryStore`, `MessageBroker`, `TrustLedger`) separate domain logic from concrete backends (Ollama, Redis, Qdrant), so any of them can be swapped without touching the rest of the system.
 - **Financial precision**: the entire economic ledger uses `Decimal` in the backend and serializes as `string` over the API, avoiding the binary rounding errors typical of using `float` for money.
 - **End-to-end real-time architecture**: an async `TickEngine` runs in the background inside FastAPI's lifespan and broadcasts every tick to all connected WebSocket clients through a subscriber hub, consumed on the frontend by a Phaser map and React panels that resync without a page reload.
-- **Dispute resolution by a second LLM**: the Judge Agent uses a higher-capacity reasoning model to arbitrate breached contracts and apply fines directly on the central bank, fully asynchronously from the citizens' own tick cycle.
+- **Evidence-grounded dispute resolution by a second LLM**: the Judge Agent cites the real transaction history between the two parties (not just the contract terms) when arbitrating a breach, uses a higher-capacity reasoning model to decide who's at fault, applies the fine on the central bank, and docks the injured party's trust in the offender — verified live against a real `phi4` judge with a crafted advance-payment dispute.
 - **Real memory compression cycle**: at the end of every simulated day, each agent's tick-by-tick reasoning is summarized, embedded and persisted in Qdrant, then retrieved as relevant past memories on future perceives — verified live against a running Ollama + Qdrant stack, not just unit-tested.
 
 ## How it works
@@ -25,7 +25,7 @@ The underlying question the project explores is what social and economic dynamic
    - **Think**: invokes the local LLM (Ollama) with its personality and perceived context, requiring a JSON response validated against `AgentAction`.
    - **Act**: applies the corresponding effect (move, send a message, post an offer, transfer SimCoin, sign a contract, file a dispute, sleep, or do nothing).
 3. The tick's **passive cost** (computational upkeep) is charged; if the balance reaches zero, the agent goes bankrupt.
-4. Contracts marked as `DISPUTED` are resolved asynchronously by the **Judge Agent**, which fines whoever is at fault.
+4. Contracts marked as `DISPUTED` are resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
 5. Every `ticks_per_day` ticks, the **sleep cycle** runs: each agent's accumulated reasoning for the day is summarized and persisted as an embedding in Qdrant, and the intermediate log is cleared for the next day.
 6. At the end of every tick, a `TickEvent` (snapshot of all agents + macro indicators) is broadcast over WebSocket to the web interface, which updates the Phaser map and the telemetry panels in real time.
 7. The "God Observer" can intervene at any moment from the **Divine Intervention Console**: devalue the currency, subsidize an agent, or cut its inference quota (technological blackout).
@@ -40,7 +40,7 @@ the-autonomous-enclave/
 │   ├── pyproject.toml
 │   ├── src/enclave/
 │   │   ├── models.py           # domain: AgentState, MarketOffer, Contract, Transaction, TickEvent...
-│   │   ├── protocols.py        # interfaces: LLMBackend, JudgeBackend, MemoryStore, MessageBroker
+│   │   ├── protocols.py        # interfaces: LLMBackend, JudgeBackend, MemoryStore, MessageBroker, TrustLedger
 │   │   ├── exceptions.py       # domain errors (insufficient funds, breached contract...)
 │   │   ├── config.py           # Settings from environment variables
 │   │   ├── seed.py             # initial citizen population (personalities, system prompts, positions)
@@ -48,11 +48,11 @@ the-autonomous-enclave/
 │   │   │   ├── llm_client.py       # OllamaLLMBackend / OllamaJudgeBackend
 │   │   │   ├── message_broker.py   # RedisMessageBroker (private inbox + market board)
 │   │   │   ├── memory_store.py     # QdrantMemoryStore (sleep cycle / memory compression)
-│   │   │   ├── economy.py          # CentralBank: balances, passive cost, devaluation, subsidies
+│   │   │   ├── economy.py          # CentralBank: balances, ledger, passive cost, devaluation, subsidies
 │   │   │   ├── contracts.py        # ContractRegistry
 │   │   │   ├── agent_runtime.py    # a single agent's Perceive/Think/Act cycle
-│   │   │   ├── tick_engine.py      # global clock, orchestrates every agent and the sleep cycle
-│   │   │   └── judge.py            # Judge Agent: resolves disputed contracts
+│   │   │   ├── tick_engine.py      # global clock, orchestrates every agent, the sleep cycle and trust
+│   │   │   └── judge.py            # Judge Agent: resolves disputed contracts using real transaction evidence
 │   │   ├── api/v1/
 │   │   │   ├── router.py           # /health, /agents, /tick
 │   │   │   ├── interventions.py    # /interventions/devalue|subsidize|blackout
@@ -148,7 +148,7 @@ npm run build
 - Persist the economic ledger in Postgres so it survives process restarts (today it lives in memory inside `CentralBank`).
 - Real pixel-art tileset for the Phaser map (today the citizens are code-generated geometric markers).
 - Real inflation and transactions-per-minute metrics in `EconomicIndicators` (currently wired to `0.0` pending a price/transaction time series).
-- Wire the Judge Agent's fault-finding into agent trust: currently a ruling always fines the accused agent without a real evidentiary check on who actually breached the contract.
+- Auto-file disputes: today an agent must choose `FILE_DISPUTE` itself; a wronged agent that just goes quiet never reaches the Judge.
 
 ## License
 
