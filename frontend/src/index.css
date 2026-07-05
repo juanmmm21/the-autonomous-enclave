@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
+@layer base {
+  body {
+    margin: 0;
+    @apply bg-enclave-bg font-sans text-sm text-enclave-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-enclave-accent/25 text-enclave-ink;
+  }
+}
+
+@layer components {
+  /* Superficie estándar de panel: borde fino + brillo interior sutil + sombra. */
+  .panel {
+    @apply rounded-md border border-enclave-edge bg-enclave-panel shadow-panel;
+  }
+
+  /* Etiqueta micro de consola: mayúsculas, tracking ancho, tinta atenuada. */
+  .micro-label {
+    @apply text-[10px] font-medium uppercase tracking-[0.14em] text-enclave-ink-dim;
+  }
+}
+
+/* Scrollbars finos y discretos, acordes a la superficie oscura. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2e3d55 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #2e3d55;
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
