@@ -75,7 +75,7 @@ class CentralBank:
             transaction_id=str(uuid.uuid4()),
             from_agent=agent_id,
             to_agent=CENTRAL_BANK_TREASURY_ID,
-            amount=charged if charged > 0 else Decimal("0.01"),
+            amount=charged,
             reason="passive_tick_cost",
             tick=tick,
             timestamp=datetime.now(UTC),
@@ -86,6 +86,32 @@ class CentralBank:
     def apply_penalty(self, agent_id: str, penalty: Decimal, tick: int) -> Transaction:
         """Aplica una multa del Agente Juez. Reusa `transfer` hacia el tesoro."""
         return self.transfer(agent_id, CENTRAL_BANK_TREASURY_ID, penalty, "judge_penalty", tick)
+
+    def print_subsidy(self, agent_id: str, amount: Decimal, tick: int) -> Transaction:
+        """Consola de Intervención Divina: inyecta SimCoin nuevo a un agente
+        (expansión monetaria), sin debitar el tesoro."""
+        if amount <= 0:
+            raise ValueError("subsidy amount must be positive")
+
+        self._balances[agent_id] = self.get_balance(agent_id) + amount
+        return Transaction(
+            transaction_id=str(uuid.uuid4()),
+            from_agent=CENTRAL_BANK_TREASURY_ID,
+            to_agent=agent_id,
+            amount=amount,
+            reason="divine_subsidy",
+            tick=tick,
+            timestamp=datetime.now(UTC),
+        )
+
+    def devalue_currency(self, factor: Decimal) -> None:
+        """Consola de Intervención Divina: multiplica todos los balances de
+        ciudadanos (no el tesoro) por `factor` (p.ej. 0.5 devalúa un 50%)."""
+        if factor <= 0:
+            raise ValueError("devaluation factor must be positive")
+
+        for agent_id in self.all_balances():
+            self._balances[agent_id] = self._balances[agent_id] * factor
 
 
 def compute_gini_index(balances: list[Decimal]) -> float:

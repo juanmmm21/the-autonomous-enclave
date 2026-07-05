@@ -39,6 +39,10 @@ class TickEngine:
     def current_tick(self) -> int:
         return self._tick
 
+    @property
+    def bank(self) -> CentralBank:
+        return self._bank
+
     def register_agent(self, agent_state: AgentState, system_prompt: str) -> None:
         self._agents[agent_state.agent_id] = agent_state
         self._system_prompts[agent_state.agent_id] = system_prompt
@@ -49,6 +53,22 @@ class TickEngine:
 
     def all_agent_ids(self) -> list[str]:
         return list(self._agents.keys())
+
+    def set_inference_quota(self, agent_id: str, quota: int) -> AgentState:
+        """Consola de Intervención Divina: apagón tecnológico (o ampliación) de
+        los slots de inferencia de un agente, con efecto inmediato."""
+        updated = self._agents[agent_id].model_copy(update={"inference_quota": quota})
+        self._agents[agent_id] = updated
+        return updated
+
+    def sync_balances_from_bank(self) -> None:
+        """Refresca los snapshots de `AgentState` tras una intervención directa
+        sobre el `CentralBank` (devaluación, subvención), sin esperar al próximo tick."""
+        for agent_id, balance in self._bank.all_balances().items():
+            if agent_id in self._agents:
+                self._agents[agent_id] = self._agents[agent_id].model_copy(
+                    update={"balance": balance}
+                )
 
     async def run_tick(self) -> TickEvent:
         self._tick += 1

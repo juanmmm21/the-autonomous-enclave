@@ -13,6 +13,7 @@ from decimal import Decimal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from enclave.api.v1.interventions import router as interventions_router
 from enclave.api.v1.router import router as v1_router
 from enclave.api.v1.websocket import TelemetryHub
 from enclave.api.v1.websocket import router as websocket_router
@@ -82,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(v1_router, prefix="/api/v1", tags=["enclave"])
+    app.include_router(interventions_router, prefix="/api/v1", tags=["interventions"])
     app.include_router(websocket_router, prefix="/api/v1")
     return app
 

@@ -69,6 +69,41 @@ def test_apply_penalty_moves_funds_to_treasury(bank: CentralBank) -> None:
     assert bank.get_balance(CENTRAL_BANK_TREASURY_ID) == Decimal("15.0")
 
 
+def test_print_subsidy_credits_agent_without_debiting_treasury(bank: CentralBank) -> None:
+    treasury_before = bank.get_balance(CENTRAL_BANK_TREASURY_ID)
+
+    bank.print_subsidy("bob", Decimal("25.0"), tick=1)
+
+    assert bank.get_balance("bob") == Decimal("35.0")
+    assert bank.get_balance(CENTRAL_BANK_TREASURY_ID) == treasury_before
+
+
+def test_print_subsidy_rejects_non_positive_amount(bank: CentralBank) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        bank.print_subsidy("bob", Decimal("0"), tick=1)
+
+
+def test_devalue_currency_scales_all_citizen_balances(bank: CentralBank) -> None:
+    bank.devalue_currency(Decimal("0.5"))
+
+    assert bank.get_balance("alice") == Decimal("50.0")
+    assert bank.get_balance("bob") == Decimal("5.0")
+
+
+def test_devalue_currency_does_not_touch_treasury(bank: CentralBank) -> None:
+    bank.apply_penalty("alice", Decimal("10.0"), tick=1)
+    treasury_before = bank.get_balance(CENTRAL_BANK_TREASURY_ID)
+
+    bank.devalue_currency(Decimal("0.5"))
+
+    assert bank.get_balance(CENTRAL_BANK_TREASURY_ID) == treasury_before
+
+
+def test_devalue_currency_rejects_non_positive_factor(bank: CentralBank) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        bank.devalue_currency(Decimal("0"))
+
+
 def test_all_balances_excludes_treasury(bank: CentralBank) -> None:
     balances = bank.all_balances()
 
