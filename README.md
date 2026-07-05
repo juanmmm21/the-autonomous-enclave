@@ -18,6 +18,8 @@ The underlying question the project explores is what social and economic dynamic
 - **Evidence-grounded dispute resolution by a second LLM**: the Judge Agent cites the real transaction history between the two parties (not just the contract terms) when arbitrating a breach, uses a higher-capacity reasoning model to decide who's at fault, applies the fine on the central bank, and docks the injured party's trust in the offender — verified live against a real `phi4` judge with a crafted advance-payment dispute.
 - **Real memory compression cycle**: at the end of every simulated day, each agent's tick-by-tick reasoning is summarized, embedded and persisted in Qdrant, then retrieved as relevant past memories on future perceives — verified live against a running Ollama + Qdrant stack, not just unit-tested.
 - **Macro indicators derived from real state, not placeholders**: the simulated energy price evolves every tick (scarcity drift plus a periodic oscillation) and feeds a real day-over-day inflation figure; transactions-per-minute is computed from the central bank's actual transaction ledger over a real-time window, not a hardcoded `0.0`.
+- **State survives a restart without slowing down the simulation**: `CentralBank` and the inference quota ledger stay in memory during execution (no DB round-trip on the hot per-tick path), but a Postgres checkpoint is taken every simulated day and on clean shutdown, then restored on the next boot — verified live by restarting the process twice and confirming each citizen came back with its real, persisted balance instead of its seed default.
+- **A pixel-art map with zero external art assets**: the ground tiles, citizen sprites and decorative buildings are generated procedurally at runtime via Phaser's `Graphics.generateTexture`, not loaded from image files.
 
 ## How it works
 
@@ -30,14 +32,15 @@ The underlying question the project explores is what social and economic dynamic
 4. A contract left `PENDING` for more than a simulated day is auto-escalated to `DISPUTED` even if neither party ever files one, so a wronged agent that simply goes quiet still reaches the Judge. Every `DISPUTED` contract is resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
 5. Every `ticks_per_day` ticks, the **sleep cycle** runs: each agent's accumulated reasoning for the day is summarized and persisted as an embedding in Qdrant, and the intermediate log is cleared for the next day.
 6. At the end of every tick, a `TickEvent` (snapshot of all agents + macro indicators) is broadcast over WebSocket to the web interface, which updates the Phaser map and the telemetry panels in real time.
-7. The "God Observer" can intervene at any moment from the **Divine Intervention Console**: devalue the currency, subsidize an agent, or cut its inference quota (technological blackout).
+7. The "God Observer" can intervene at any moment from the **Divine Intervention Console**: devalue the currency, subsidize an agent, cut its inference quota (technological blackout), or shock the energy price (scarcity or abundance).
+8. Every simulated day (and on clean shutdown), the economic state is checkpointed to Postgres and restored on the next boot, so a restart doesn't reset the colony back to its seed defaults.
 
 ## Architecture
 
 ```text
 the-autonomous-enclave/
 ├── docs/vision.md              # original project vision document
-├── docker-compose.yml          # Redis (broker) + Qdrant (vector memory) for local development
+├── docker-compose.yml          # Redis (broker) + Qdrant (vector memory) + Postgres (checkpoints) for local dev
 ├── backend/
 │   ├── pyproject.toml
 │   ├── src/enclave/
@@ -50,22 +53,23 @@ the-autonomous-enclave/
 │   │   │   ├── llm_client.py       # OllamaLLMBackend / OllamaJudgeBackend
 │   │   │   ├── message_broker.py   # RedisMessageBroker (private inbox + market board)
 │   │   │   ├── memory_store.py     # QdrantMemoryStore (sleep cycle / memory compression)
-│   │   │   ├── economy.py          # CentralBank: balances, ledger, passive cost, devaluation, subsidies
+│   │   │   ├── economy.py          # CentralBank: balances, ledger, passive cost, energy price, devaluation, subsidies
 │   │   │   ├── inference_market.py # InferenceQuotaLedger: the scarce compute resource agents auction
 │   │   │   ├── contracts.py        # ContractRegistry (auto-escalates overdue PENDING contracts to the Judge)
+│   │   │   ├── persistence.py      # PostgresLedgerStore: periodic checkpoint/restore of balances and quotas
 │   │   │   ├── agent_runtime.py    # a single agent's Perceive/Think/Act cycle
 │   │   │   ├── tick_engine.py      # global clock, orchestrates every agent, the sleep cycle and trust
 │   │   │   └── judge.py            # Judge Agent: resolves disputed contracts using real transaction evidence
 │   │   ├── api/v1/
 │   │   │   ├── router.py           # /health, /agents, /tick
-│   │   │   ├── interventions.py    # /interventions/devalue|subsidize|blackout
+│   │   │   ├── interventions.py    # /interventions/devalue|subsidize|blackout|energy_shock
 │   │   │   └── websocket.py        # /ws/telemetry + TelemetryHub
-│   │   └── main.py             # FastAPI app factory + lifespan (seeds citizens, starts the TickEngine)
-│   └── tests/                  # pytest: economy, models, agent cycle, tick engine, judge, seeding
+│   │   └── main.py             # FastAPI app factory + lifespan (seeds citizens, restores state, starts the TickEngine)
+│   └── tests/                  # pytest: economy, models, contracts, agent cycle, tick engine, judge, persistence, seeding
 └── frontend/
     └── src/
         ├── components/
-        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts (pixel-art map, agent selection)
+        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts + tileset.ts (procedural pixel-art map)
         │   └── dashboard/       # EconomyPanel, ConsciousnessInspector, DivineConsole
         ├── hooks/useTelemetrySocket.ts  # WebSocket with automatic reconnection
         └── types/api.ts         # contract shared with the backend
@@ -75,7 +79,7 @@ the-autonomous-enclave/
 
 - Python 3.11+
 - Node.js 20+
-- Docker (for Redis and Qdrant)
+- Docker (for Redis, Qdrant and Postgres)
 - [Ollama](https://ollama.com) running locally, with at least one model pulled (e.g. `ollama pull llama3.2`)
 
 ```bash
@@ -104,7 +108,7 @@ uvicorn enclave.main:app --reload --port 8000
 cd frontend && npm run dev
 ```
 
-With both running, `http://localhost:5173` shows "God Mode": the Phaser map with the five seeded citizens (Ada, Boris, Clio, Dorian, Elena — each with a distinct personality), the economic indicators panel and, once you select an agent, its Consciousness Inspector with inventory, trust links and a live reasoning feed.
+With both running, `http://localhost:5173` shows "God Mode": the pixel-art plaza with a market and a bank in the background and the five seeded citizens (Ada, Boris, Clio, Dorian, Elena — each with a distinct personality) walking around it, the economic indicators panel and, once you select an agent, its Consciousness Inspector with inventory, trust links and a live reasoning feed.
 
 ## API contract
 
@@ -119,6 +123,7 @@ All endpoints live under `/api/v1`. Financial amounts (`balance`, `unit_price`, 
 | `POST` | `/interventions/devalue` | `{"factor": "0.5"}` — devalues every citizen's SimCoin |
 | `POST` | `/interventions/subsidize` | `{"agent_id": "...", "amount": "100"}` — prints SimCoin for an agent |
 | `POST` | `/interventions/blackout` | `{"agent_id": "...", "quota": 0}` — adjusts an agent's inference quota |
+| `POST` | `/interventions/energy_shock` | `{"factor": "2.0"}` — `>1` scarcity, `<1` abundance; shifts the base energy price with immediate effect |
 | `WS` | `/ws/telemetry` | Streams `TickEvent` (agent snapshot + macro indicators) on every tick |
 
 ## Development
@@ -144,12 +149,12 @@ npm run build
 - **An agent's position looks wrong on the map**: `Position` enforces `0 <= x < GRID_WIDTH` and `0 <= y < GRID_HEIGHT` (must match `GRID_WIDTH`/`GRID_HEIGHT` in `frontend/src/components/phaser/MainScene.ts`); a move outside those bounds is rejected as a malformed action rather than silently accepted.
 - **Qdrant logs version-compatibility warnings**: informational notice from `qdrant-client` when it can't verify the server version; it doesn't block startup.
 - **`mypy --strict` fails on `numpy` stubs**: `numpy` arrives as a transitive dependency of `qdrant-client`; `pyproject.toml` pins `python_version = "3.12"` in the mypy config specifically to avoid a syntax conflict between its stubs and strict mode.
+- **Backend fails to start with a Postgres connection error**: make sure `docker compose up -d` includes the `postgres` service and it's healthy (`docker compose ps`); check `ENCLAVE_POSTGRES_DSN` matches the credentials in `docker-compose.yml` if you changed them.
+- **A restarted process shows a citizen's seed balance instead of what it had before**: the checkpoint only happens once per simulated day (`ticks_per_day` ticks) and on a *clean* shutdown — an ungraceful kill (`kill -9`, a crashed container) between checkpoints loses at most one day of state, by design (see `persistence.py`).
 
 ## Roadmap
 
-- Persist the economic ledger and inference quota ledger in Postgres so they survive process restarts (today they live in memory).
-- Real pixel-art tileset for the Phaser map (today the citizens are code-generated geometric markers).
-- Let the Divine Console perturb the energy price directly (today it only moves SimCoin balances and inference quotas).
+No open items right now. Natural next steps if the project keeps growing: a real evidentiary link between a signed contract's `terms` and the specific transactions meant to fulfill it (today the Judge reasons over *all* transaction history between the two parties, not a scoped set tied to that one contract), and letting citizens produce and trade the other tradable asset types (`vector_pack`, `code_script`, etc.) beyond inference quota, which today only move SimCoin without transferring anything back.
 
 ## License
 
