@@ -11,7 +11,8 @@ The underlying question the project explores is what social and economic dynamic
 ## Goal / skills demonstrated
 
 - **Orchestrating multiple stateful LLM agents**: each citizen keeps its personality, memory and inventory across ticks, with a strict JSON output contract validated against a schema (`AgentAction`) before any effect is applied to the world.
-- **Interfaces designed before implementation**: the `Protocol`s in `protocols.py` (`LLMBackend`, `JudgeBackend`, `MemoryStore`, `MessageBroker`, `TrustLedger`) separate domain logic from concrete backends (Ollama, Redis, Qdrant), so any of them can be swapped without touching the rest of the system.
+- **Interfaces designed before implementation**: the `Protocol`s in `protocols.py` (`LLMBackend`, `JudgeBackend`, `MemoryStore`, `MessageBroker`, `TrustLedger`, `ResourceLedger`) separate domain logic from concrete backends (Ollama, Redis, Qdrant), so any of them can be swapped without touching the rest of the system.
+- **A real market, not just a payment rail**: accepting a market offer resolves the specific offer by id and moves the underlying resource (inference quota) before the SimCoin payment, so an oversold offer fails cleanly instead of letting a buyer pay for nothing — observed live when a seeded citizen posted an inference-quota offer for more than it actually held.
 - **Financial precision**: the entire economic ledger uses `Decimal` in the backend and serializes as `string` over the API, avoiding the binary rounding errors typical of using `float` for money.
 - **End-to-end real-time architecture**: an async `TickEngine` runs in the background inside FastAPI's lifespan and broadcasts every tick to all connected WebSocket clients through a subscriber hub, consumed on the frontend by a Phaser map and React panels that resync without a page reload.
 - **Evidence-grounded dispute resolution by a second LLM**: the Judge Agent cites the real transaction history between the two parties (not just the contract terms) when arbitrating a breach, uses a higher-capacity reasoning model to decide who's at fault, applies the fine on the central bank, and docks the injured party's trust in the offender — verified live against a real `phi4` judge with a crafted advance-payment dispute.
@@ -24,7 +25,7 @@ The underlying question the project explores is what social and economic dynamic
 2. On every tick, the `TickEngine` walks through the living agents and, for each one, the `AgentRuntime` runs:
    - **Perceive**: fetches its inbox (Redis), the open market offers, and its most relevant past-day memories (Qdrant).
    - **Think**: invokes the local LLM (Ollama) with its personality and perceived context, requiring a JSON response validated against `AgentAction`.
-   - **Act**: applies the corresponding effect (move, send a message, post an offer, transfer SimCoin, sign a contract, file a dispute, sleep, or do nothing).
+   - **Act**: applies the corresponding effect (move, send a message, post or accept a market offer — moving both the SimCoin and, for inference quota, the underlying resource — transfer SimCoin, sign a contract, file a dispute, sleep, or do nothing).
 3. The tick's **passive cost** (computational upkeep) is charged; if the balance reaches zero, the agent goes bankrupt.
 4. Contracts marked as `DISPUTED` are resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
 5. Every `ticks_per_day` ticks, the **sleep cycle** runs: each agent's accumulated reasoning for the day is summarized and persisted as an embedding in Qdrant, and the intermediate log is cleared for the next day.
@@ -41,7 +42,7 @@ the-autonomous-enclave/
 │   ├── pyproject.toml
 │   ├── src/enclave/
 │   │   ├── models.py           # domain: AgentState, MarketOffer, Contract, Transaction, TickEvent...
-│   │   ├── protocols.py        # interfaces: LLMBackend, JudgeBackend, MemoryStore, MessageBroker, TrustLedger
+│   │   ├── protocols.py        # interfaces: LLMBackend, JudgeBackend, MemoryStore, MessageBroker, TrustLedger, ResourceLedger
 │   │   ├── exceptions.py       # domain errors (insufficient funds, breached contract...)
 │   │   ├── config.py           # Settings from environment variables
 │   │   ├── seed.py             # initial citizen population (personalities, system prompts, positions)
@@ -50,6 +51,7 @@ the-autonomous-enclave/
 │   │   │   ├── message_broker.py   # RedisMessageBroker (private inbox + market board)
 │   │   │   ├── memory_store.py     # QdrantMemoryStore (sleep cycle / memory compression)
 │   │   │   ├── economy.py          # CentralBank: balances, ledger, passive cost, devaluation, subsidies
+│   │   │   ├── inference_market.py # InferenceQuotaLedger: the scarce compute resource agents auction
 │   │   │   ├── contracts.py        # ContractRegistry
 │   │   │   ├── agent_runtime.py    # a single agent's Perceive/Think/Act cycle
 │   │   │   ├── tick_engine.py      # global clock, orchestrates every agent, the sleep cycle and trust
@@ -145,8 +147,7 @@ npm run build
 
 ## Roadmap
 
-- Auction inference quotas between agents (`inference_quota` exists on the model but isn't yet auctioned or actively consumed in the tick loop).
-- Persist the economic ledger in Postgres so it survives process restarts (today it lives in memory inside `CentralBank`).
+- Persist the economic ledger and inference quota ledger in Postgres so they survive process restarts (today they live in memory).
 - Real pixel-art tileset for the Phaser map (today the citizens are code-generated geometric markers).
 - Auto-file disputes: today an agent must choose `FILE_DISPUTE` itself; a wronged agent that just goes quiet never reaches the Judge.
 - Let the Divine Console perturb the energy price directly (today it only moves SimCoin balances and inference quotas).
