@@ -1,15 +1,16 @@
 from decimal import Decimal
 
 import pytest
-from conftest import FakeBroker, FakeLLM, FakeMemoryStore
+from conftest import FakeBroker, FakeLLM, FakeMemoryStore, FakeResourceLedger
 
-from enclave.exceptions import LLMGenerationError
+from enclave.exceptions import InsufficientResourceError, LLMGenerationError
 from enclave.models import (
     ActionType,
     AgentAction,
     AgentState,
     AssetType,
     InboxMessage,
+    MarketOffer,
     Personality,
     Position,
 )
@@ -47,8 +48,16 @@ def broker() -> FakeBroker:
     return FakeBroker()
 
 
+@pytest.fixture
+def resources() -> FakeResourceLedger:
+    return FakeResourceLedger({"agent-1": 3, "agent-2": 3})
+
+
 def _make_runtime(
-    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+    broker: FakeBroker,
+    bank: CentralBank,
+    contracts: ContractRegistry,
+    resources: FakeResourceLedger | None = None,
 ) -> AgentRuntime:
     return AgentRuntime(
         FakeLLM(AgentAction(action_type=ActionType.IDLE, reasoning="noop")),
@@ -56,6 +65,7 @@ def _make_runtime(
         bank,
         contracts,
         FakeMemoryStore(),
+        resources or FakeResourceLedger(),
     )
 
 
@@ -82,7 +92,7 @@ async def test_perceive_includes_recent_memories_from_the_memory_store(
 ) -> None:
     memory_store = FakeMemoryStore()
     await memory_store.store_daily_summary("agent-1", day=1, summary="ayer negocié con agent-2")
-    runtime = AgentRuntime(FakeLLM(), broker, bank, contracts, memory_store)
+    runtime = AgentRuntime(FakeLLM(), broker, bank, contracts, memory_store, FakeResourceLedger())
     agent_state = _make_agent_state()
 
     context = await runtime.perceive(agent_state, energy_price=Decimal("1.0"), tick=1)
@@ -216,3 +226,80 @@ async def test_act_transfer_without_amount_raises_llm_generation_error(
 
     with pytest.raises(LLMGenerationError):
         await runtime.act(agent_state, action, tick=1)
+
+
+async def test_act_accept_offer_transfers_inference_quota_and_payment(
+    broker: FakeBroker,
+    bank: CentralBank,
+    contracts: ContractRegistry,
+    resources: FakeResourceLedger,
+) -> None:
+    runtime = _make_runtime(broker, bank, contracts, resources)
+    await broker.publish_offer(
+        MarketOffer(
+            offer_id="offer-1",
+            seller_id="agent-2",
+            asset_type=AssetType.INFERENCE_QUOTA,
+            quantity=2,
+            unit_price=Decimal("5.0"),
+            created_at_tick=1,
+        )
+    )
+    agent_state = _make_agent_state("agent-1")
+    action = AgentAction(
+        action_type=ActionType.ACCEPT_OFFER,
+        reasoning="buying spare quota",
+        payload={"offer_id": "offer-1"},
+    )
+
+    await runtime.act(agent_state, action, tick=2)
+
+    assert resources.quotas == {"agent-1": 5, "agent-2": 1}
+    assert bank.get_balance("agent-1") == Decimal("90.0")
+    assert bank.get_balance("agent-2") == Decimal("20.0")
+    assert "offer-1" in broker.withdrawn_offer_ids
+
+
+async def test_act_accept_offer_with_unknown_id_raises_llm_generation_error(
+    broker: FakeBroker,
+    bank: CentralBank,
+    contracts: ContractRegistry,
+    resources: FakeResourceLedger,
+) -> None:
+    runtime = _make_runtime(broker, bank, contracts, resources)
+    agent_state = _make_agent_state("agent-1")
+    action = AgentAction(
+        action_type=ActionType.ACCEPT_OFFER, reasoning="buying", payload={"offer_id": "ghost-offer"}
+    )
+
+    with pytest.raises(LLMGenerationError):
+        await runtime.act(agent_state, action, tick=2)
+
+
+async def test_act_accept_offer_fails_without_moving_money_if_seller_lacks_quota(
+    broker: FakeBroker, bank: CentralBank, contracts: ContractRegistry
+) -> None:
+    resources = FakeResourceLedger({"agent-1": 3, "agent-2": 0})
+    runtime = _make_runtime(broker, bank, contracts, resources)
+    await broker.publish_offer(
+        MarketOffer(
+            offer_id="offer-1",
+            seller_id="agent-2",
+            asset_type=AssetType.INFERENCE_QUOTA,
+            quantity=2,
+            unit_price=Decimal("5.0"),
+            created_at_tick=1,
+        )
+    )
+    agent_state = _make_agent_state("agent-1")
+    action = AgentAction(
+        action_type=ActionType.ACCEPT_OFFER,
+        reasoning="buying spare quota",
+        payload={"offer_id": "offer-1"},
+    )
+
+    with pytest.raises(InsufficientResourceError):
+        await runtime.act(agent_state, action, tick=2)
+
+    assert bank.get_balance("agent-1") == Decimal("100.0")  # no se cobró nada
+    assert "offer-1" not in broker.withdrawn_offer_ids

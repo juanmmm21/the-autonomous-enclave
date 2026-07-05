@@ -6,14 +6,16 @@ from enclave.seed import INITIAL_CITIZENS, seed_initial_citizens
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
+from enclave.services.inference_market import InferenceQuotaLedger
 from enclave.services.tick_engine import TickEngine
 
 
 def _make_engine() -> TickEngine:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
+    quotas = InferenceQuotaLedger()
     memory_store = FakeMemoryStore()
-    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, ContractRegistry(), memory_store)
-    return TickEngine(runtime, bank, memory_store, energy_price=Decimal("1.0"))
+    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, ContractRegistry(), memory_store, quotas)
+    return TickEngine(runtime, bank, memory_store, quotas, energy_price=Decimal("1.0"))
 
 
 def test_seed_registers_every_blueprint() -> None:

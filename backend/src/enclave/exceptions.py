@@ -22,6 +22,20 @@ class InsufficientFundsError(EnclaveError):
         super().__init__(f"agent {agent_id} needs {required} SimCoin but only has {available}")
 
 
+class InsufficientResourceError(EnclaveError):
+    """Un agente no dispone de suficiente cantidad de un recurso (p.ej. cuota de
+    inferencia) para completar una transferencia."""
+
+    def __init__(self, agent_id: str, resource: str, required: int, available: int) -> None:
+        self.agent_id = agent_id
+        self.resource = resource
+        self.required = required
+        self.available = available
+        super().__init__(
+            f"agent {agent_id} needs {required} units of {resource} but only has {available}"
+        )
+
+
 class ContractViolationError(EnclaveError):
     """Un contrato fue incumplido y se remite al Agente Juez."""
 

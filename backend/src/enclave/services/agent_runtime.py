@@ -14,12 +14,13 @@ from enclave.models import (
     AgentAction,
     AgentState,
     AgentStatus,
+    AssetType,
     InboxMessage,
     MarketOffer,
     PerceivedContext,
     Position,
 )
-from enclave.protocols import LLMBackend, MemoryStore, MessageBroker
+from enclave.protocols import LLMBackend, MemoryStore, MessageBroker, ResourceLedger
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
 
@@ -55,12 +56,14 @@ class AgentRuntime:
         bank: CentralBank,
         contracts: ContractRegistry,
         memory_store: MemoryStore,
+        resource_ledger: ResourceLedger,
     ) -> None:
         self._llm = llm_backend
         self._broker = broker
         self._bank = bank
         self._contracts = contracts
         self._memory = memory_store
+        self._resources = resource_ledger
 
     async def perceive(
         self, agent_state: AgentState, energy_price: Decimal, tick: int
@@ -134,10 +137,33 @@ class AgentRuntime:
                 )
                 return agent_state
 
-            case ActionType.ACCEPT_OFFER | ActionType.TRANSFER:
+            case ActionType.TRANSFER:
                 to_agent = _require_str(payload, "to_agent", action.action_type)
                 amount = _require_decimal(payload, "amount", action.action_type)
                 self._bank.transfer(agent_id, to_agent, amount, action.action_type.value, tick)
+                return agent_state
+
+            case ActionType.ACCEPT_OFFER:
+                offer_id = _require_str(payload, "offer_id", action.action_type)
+                open_offers = await self._broker.fetch_open_offers()
+                offer = next((o for o in open_offers if o.offer_id == offer_id), None)
+                if offer is None:
+                    raise LLMGenerationError(
+                        f"accept_offer targeted unknown or already-closed offer {offer_id}"
+                    )
+
+                # El recurso se transfiere antes que el dinero: si el vendedor ya no
+                # dispone de la cuota ofertada, la operación se aborta sin mover SimCoin.
+                if offer.asset_type == AssetType.INFERENCE_QUOTA:
+                    self._resources.transfer_inference_quota(
+                        offer.seller_id, agent_id, offer.quantity
+                    )
+
+                total_cost = offer.unit_price * offer.quantity
+                self._bank.transfer(
+                    agent_id, offer.seller_id, total_cost, f"accept_offer:{offer_id}", tick
+                )
+                await self._broker.withdraw_offer(offer_id)
                 return agent_state
 
             case ActionType.SIGN_CONTRACT:

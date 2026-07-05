@@ -14,10 +14,19 @@ from enclave.models import AgentAction, Contract, JudgeVerdict, PerceivedContext
 
 _ACTION_JSON_SCHEMA_HINT = (
     "Responde EXCLUSIVAMENTE con un objeto JSON con las claves "
-    '"action_type" (uno de: move, send_message, post_offer, accept_offer, '
-    "sign_contract, file_dispute, transfer, sleep, idle), "
-    '"reasoning" (string con tu razonamiento interno) y '
-    '"payload" (objeto con los parámetros de la acción). '
+    '"action_type", "reasoning" (tu razonamiento interno) y "payload" '
+    "(objeto con los parámetros de esa acción concreta). "
+    "El payload esperado según el action_type es:\n"
+    '- move: {"x": int, "y": int}\n'
+    '- send_message: {"to_agent": str, "body": str}\n'
+    '- post_offer: {"asset_type": uno de inference_quota/vector_pack/alpha_signal/'
+    'code_script/financial_derivative, "quantity": int, "unit_price": número}\n'
+    '- accept_offer: {"offer_id": str} — usa el "offer_id" exacto de una oferta '
+    "que veas en market_offers, nunca lo inventes\n"
+    '- sign_contract: {"counterparty": str, "terms": str, "amount": número}\n'
+    '- file_dispute: {"contract_id": str}\n'
+    '- transfer: {"to_agent": str, "amount": número}\n'
+    "- sleep / idle: {} (payload vacío)\n"
     "No incluyas texto fuera del JSON."
 )
 

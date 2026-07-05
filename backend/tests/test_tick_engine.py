@@ -7,6 +7,7 @@ from enclave.models import AgentState, Personality, Position
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
+from enclave.services.inference_market import InferenceQuotaLedger
 from enclave.services.tick_engine import TickEngine
 
 
@@ -35,12 +36,16 @@ def _make_engine(
     tick_interval_seconds: float = 5.0,
 ) -> tuple[TickEngine, FakeMemoryStore]:
     bank = CentralBank(passive_tick_cost=Decimal("1.0"))
+    quotas = InferenceQuotaLedger()
     memory = memory_store or FakeMemoryStore()
-    runtime = AgentRuntime(FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory)
+    runtime = AgentRuntime(
+        FakeLLM(), broker or FakeBroker(), bank, ContractRegistry(), memory, quotas
+    )
     engine = TickEngine(
         runtime,
         bank,
         memory,
+        quotas,
         energy_price=Decimal("1.0"),
         ticks_per_day=ticks_per_day,
         tick_interval_seconds=tick_interval_seconds,

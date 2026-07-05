@@ -3,6 +3,7 @@ de dominio, sin dependencias externas (Redis, Ollama)."""
 
 from __future__ import annotations
 
+from enclave.exceptions import InsufficientResourceError
 from enclave.models import ActionType, AgentAction, InboxMessage, MarketOffer, PerceivedContext
 
 
@@ -12,6 +13,7 @@ class FakeBroker:
     def __init__(self) -> None:
         self.sent_messages: list[InboxMessage] = []
         self.published_offers: list[MarketOffer] = []
+        self.withdrawn_offer_ids: set[str] = set()
         self._inbox: dict[str, list[InboxMessage]] = {}
 
     async def send_direct_message(self, to_agent: str, message: InboxMessage) -> None:
@@ -25,7 +27,10 @@ class FakeBroker:
         self.published_offers.append(offer)
 
     async def fetch_open_offers(self) -> list[MarketOffer]:
-        return list(self.published_offers)
+        return [o for o in self.published_offers if o.offer_id not in self.withdrawn_offer_ids]
+
+    async def withdraw_offer(self, offer_id: str) -> None:
+        self.withdrawn_offer_ids.add(offer_id)
 
 
 class FakeLLM:
@@ -66,6 +71,20 @@ class FakeTrustLedger:
 
     def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
         self.adjustments.append((agent_id, counterparty_id, delta))
+
+
+class FakeResourceLedger:
+    """Doble en memoria de `ResourceLedger`, sin dependencia del `TickEngine`."""
+
+    def __init__(self, initial_quotas: dict[str, int] | None = None) -> None:
+        self.quotas: dict[str, int] = dict(initial_quotas or {})
+
+    def transfer_inference_quota(self, from_agent: str, to_agent: str, quantity: int) -> None:
+        available = self.quotas.get(from_agent, 0)
+        if available < quantity:
+            raise InsufficientResourceError(from_agent, "inference_quota", quantity, available)
+        self.quotas[from_agent] = available - quantity
+        self.quotas[to_agent] = self.quotas.get(to_agent, 0) + quantity
 
 
 class FakeJudgeBackend:

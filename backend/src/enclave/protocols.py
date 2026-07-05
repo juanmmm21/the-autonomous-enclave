@@ -61,6 +61,8 @@ class MessageBroker(Protocol):
 
     async def fetch_open_offers(self) -> list[MarketOffer]: ...
 
+    async def withdraw_offer(self, offer_id: str) -> None: ...
+
 
 class TrustLedger(Protocol):
     """Permite ajustar la confianza de un agente hacia otro tras un evento
@@ -69,4 +71,14 @@ class TrustLedger(Protocol):
     def adjust_trust(self, agent_id: str, counterparty_id: str, delta: float) -> None:
         """Suma `delta` (puede ser negativo) a la confianza de `agent_id` hacia
         `counterparty_id`, saturando el resultado en el rango [-1, 1]."""
+        ...
+
+
+class ResourceLedger(Protocol):
+    """Recursos escasos distintos del SimCoin que los agentes subastan entre sí
+    (hoy, cuotas de inferencia; ver `docs/vision.md`)."""
+
+    def transfer_inference_quota(self, from_agent: str, to_agent: str, quantity: int) -> None:
+        """Mueve `quantity` unidades de cuota de inferencia entre dos agentes.
+        Lanza `InsufficientResourceError` si el vendedor no dispone de tanta."""
         ...

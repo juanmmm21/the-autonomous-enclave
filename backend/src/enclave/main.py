@@ -22,6 +22,7 @@ from enclave.seed import seed_initial_citizens
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
+from enclave.services.inference_market import InferenceQuotaLedger
 from enclave.services.judge import JudgeAgent
 from enclave.services.llm_client import OllamaJudgeBackend, OllamaLLMBackend
 from enclave.services.memory_store import QdrantMemoryStore
@@ -47,13 +48,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     broker = RedisMessageBroker(settings.redis_url)
     memory_store = QdrantMemoryStore(settings.qdrant_url, settings.ollama_url)
     bank = CentralBank(Decimal(settings.passive_tick_cost))
+    quota_ledger = InferenceQuotaLedger()
     contracts = ContractRegistry()
-    runtime = AgentRuntime(llm_backend, broker, bank, contracts, memory_store)
+    runtime = AgentRuntime(llm_backend, broker, bank, contracts, memory_store, quota_ledger)
     telemetry_hub = TelemetryHub()
     tick_engine = TickEngine(
         runtime,
         bank,
         memory_store,
+        quota_ledger,
         energy_price=Decimal("1.0"),
         ticks_per_day=settings.ticks_per_day,
         tick_interval_seconds=settings.tick_interval_seconds,

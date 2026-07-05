@@ -16,6 +16,7 @@ from enclave.models import AgentState, AgentStatus, EconomicIndicators, TickEven
 from enclave.protocols import MemoryStore
 from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.economy import CentralBank, compute_energy_price, compute_gini_index
+from enclave.services.inference_market import InferenceQuotaLedger
 
 logger = logging.getLogger("enclave.tick_engine")
 
@@ -30,6 +31,7 @@ class TickEngine:
         runtime: AgentRuntime,
         bank: CentralBank,
         memory_store: MemoryStore,
+        quota_ledger: InferenceQuotaLedger,
         energy_price: Decimal,
         ticks_per_day: int = DEFAULT_TICKS_PER_DAY,
         tick_interval_seconds: float = 5.0,
@@ -38,6 +40,7 @@ class TickEngine:
         self._runtime = runtime
         self._bank = bank
         self._memory = memory_store
+        self._quotas = quota_ledger
         self._base_energy_price = energy_price
         self._energy_price = energy_price
         self._ticks_per_day = ticks_per_day
@@ -62,6 +65,7 @@ class TickEngine:
         self._system_prompts[agent_state.agent_id] = system_prompt
         self._daily_log[agent_state.agent_id] = []
         self._bank.open_account(agent_state.agent_id, agent_state.balance)
+        self._quotas.open_account(agent_state.agent_id, agent_state.inference_quota)
 
     def agent_snapshot(self, agent_id: str) -> AgentState:
         return self._agents[agent_id]
@@ -72,6 +76,7 @@ class TickEngine:
     def set_inference_quota(self, agent_id: str, quota: int) -> AgentState:
         """Consola de Intervención Divina: apagón tecnológico (o ampliación) de
         los slots de inferencia de un agente, con efecto inmediato."""
+        self._quotas.set_quota(agent_id, quota)
         updated = self._agents[agent_id].model_copy(update={"inference_quota": quota})
         self._agents[agent_id] = updated
         return updated
@@ -142,7 +147,12 @@ class TickEngine:
             )
 
         _, is_bankrupt = self._bank.apply_passive_tick_cost(agent_id, self._tick)
-        agent_state = agent_state.model_copy(update={"balance": self._bank.get_balance(agent_id)})
+        agent_state = agent_state.model_copy(
+            update={
+                "balance": self._bank.get_balance(agent_id),
+                "inference_quota": self._quotas.get_quota(agent_id),
+            }
+        )
         if is_bankrupt:
             agent_state = agent_state.model_copy(update={"status": AgentStatus.BANKRUPT})
         return agent_state
