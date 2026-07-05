@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
+    postgres_dsn: str = "postgresql://enclave:enclave@localhost:5432/enclave"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
     judge_ollama_model: str = "phi4"

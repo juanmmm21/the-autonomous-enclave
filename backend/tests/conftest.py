@@ -87,6 +87,16 @@ class FakeResourceLedger:
         self.quotas[to_agent] = self.quotas.get(to_agent, 0) + quantity
 
 
+class FakeLedgerStore:
+    """Doble de `PostgresLedgerStore`, sin dependencia de una Postgres real."""
+
+    def __init__(self) -> None:
+        self.snapshot_calls = 0
+
+    async def save_snapshot(self, bank: object, quotas: object) -> None:
+        self.snapshot_calls += 1
+
+
 class FakeJudgeBackend:
     """Doble de `JudgeBackend` que devuelve un veredicto prefijado, sin llamar a Ollama."""
 

@@ -2,7 +2,7 @@ import asyncio
 from decimal import Decimal
 
 import pytest
-from conftest import FakeBroker, FakeLLM, FakeMemoryStore
+from conftest import FakeBroker, FakeLedgerStore, FakeLLM, FakeMemoryStore
 
 from enclave.main import _tick_loop
 from enclave.models import (
@@ -217,8 +217,11 @@ async def test_tick_loop_keeps_running_when_the_judge_fails() -> None:
     engine, _, _ = _make_engine()
     engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
     judge = _ExplodingJudge()
+    ledger_store = FakeLedgerStore()
 
-    task = asyncio.create_task(_tick_loop(engine, judge, interval_seconds=0.001))  # type: ignore[arg-type]
+    task = asyncio.create_task(
+        _tick_loop(engine, judge, ledger_store, ticks_per_day=1_000_000, interval_seconds=0.001)  # type: ignore[arg-type]
+    )
 
     async def _wait_for_ticks() -> None:
         while engine.current_tick < 3:

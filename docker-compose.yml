@@ -19,6 +19,23 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: enclave
+      POSTGRES_PASSWORD: enclave
+      POSTGRES_DB: enclave
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "enclave"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   redis_data:
   qdrant_data:
+  postgres_data:

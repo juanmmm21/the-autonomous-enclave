@@ -27,17 +27,26 @@ from enclave.services.judge import JudgeAgent
 from enclave.services.llm_client import OllamaJudgeBackend, OllamaLLMBackend
 from enclave.services.memory_store import QdrantMemoryStore
 from enclave.services.message_broker import RedisMessageBroker
+from enclave.services.persistence import PostgresLedgerStore
 from enclave.services.tick_engine import TickEngine
 
 logger = logging.getLogger("enclave.main")
 
 
-async def _tick_loop(engine: TickEngine, judge: JudgeAgent, interval_seconds: float) -> None:
+async def _tick_loop(
+    engine: TickEngine,
+    judge: JudgeAgent,
+    ledger_store: PostgresLedgerStore,
+    ticks_per_day: int,
+    interval_seconds: float,
+) -> None:
     while True:
         await asyncio.sleep(interval_seconds)
         try:
             await engine.run_tick()
             await judge.review_disputed_contracts(engine.current_tick)
+            if engine.current_tick % ticks_per_day == 0:
+                await ledger_store.save_snapshot(engine.bank, engine.quotas)
         except Exception:
             # Una iteración fallida no debe matar silenciosamente el reloj de toda
             # la simulación: se registra el error y se reintenta en el próximo tick.
@@ -72,13 +81,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     judge = JudgeAgent(judge_backend, contracts, bank, tick_engine)
     seed_initial_citizens(tick_engine)
 
+    ledger_store = PostgresLedgerStore(settings.postgres_dsn)
+    await ledger_store.connect()
+    if await ledger_store.restore(bank, quota_ledger):
+        # Restaura DESPUÉS de sembrar: seed_initial_citizens abre cada cuenta con
+        # su balance de partida, y aquí lo sobrescribimos con el estado real
+        # persistido en el último checkpoint antes de un reinicio.
+        tick_engine.sync_balances_from_bank()
+        logger.info("restored economic state from postgres")
+
     app.state.settings = settings
     app.state.tick_engine = tick_engine
     app.state.telemetry_hub = telemetry_hub
     app.state.judge = judge
     app.state.memory_store = memory_store
 
-    tick_task = asyncio.create_task(_tick_loop(tick_engine, judge, settings.tick_interval_seconds))
+    tick_task = asyncio.create_task(
+        _tick_loop(
+            tick_engine, judge, ledger_store, settings.ticks_per_day, settings.tick_interval_seconds
+        )
+    )
     logger.info("enclave started: tick interval=%.1fs", settings.tick_interval_seconds)
 
     try:
@@ -86,6 +108,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         tick_task.cancel()
         await asyncio.gather(tick_task, return_exceptions=True)
+        await ledger_store.save_snapshot(bank, quota_ledger)
+        await ledger_store.close()
         await llm_backend.aclose()
         await judge_backend.aclose()
         await broker.aclose()
