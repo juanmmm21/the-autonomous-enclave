@@ -1,5 +1,7 @@
 """Población inicial de ciudadanos digitales. Se registra en el `TickEngine`
-al arrancar la aplicación (ver `main.py`)."""
+al arrancar la aplicación (ver `main.py`). Los helpers de system prompt son
+públicos porque la API de creación de ciudadanos en caliente
+(`api/v1/citizens.py`) los reutiliza para no duplicar la plantilla."""
 
 from __future__ import annotations
 
@@ -10,19 +12,45 @@ from enclave.models import GRID_HEIGHT, GRID_WIDTH, AgentState, Personality, Pos
 from enclave.services.tick_engine import TickEngine
 
 DEFAULT_INFERENCE_QUOTA = 3
+DEFAULT_STARTING_BALANCE = Decimal("120.0")
+
+# Celda de aparición por defecto para ciudadanos creados desde la web: el
+# interior de la plaza central del mapa del frontend (bloque 34..41 x 20..25),
+# transitable y lejos de cualquier footprint de edificio.
+DEFAULT_SPAWN_POSITION = Position(x=38, y=23)
+
+_TRAIT_FRAGMENTS: dict[Personality, str] = {
+    Personality.AMBITIOUS: (
+        "una ambición agresiva por maximizar tu riqueza y tu influencia, aprovechando "
+        "cualquier oportunidad de negocio antes que tus rivales"
+    ),
+    Personality.CAUTIOUS: (
+        "una cautela que te hace acumular reservas y evitar riesgos innecesarios antes "
+        "que perseguir ganancias rápidas"
+    ),
+    Personality.COOPERATIVE: (
+        "una vocación cooperativa de construir alianzas comerciales y relaciones de "
+        "confianza duraderas con otros ciudadanos"
+    ),
+    Personality.ALTRUISTIC: (
+        "un altruismo que te lleva a ayudar a quien lo necesita incluso si eso reduce "
+        "tu beneficio inmediato"
+    ),
+    Personality.MACHIAVELLIAN: (
+        "una vena maquiavélica dispuesta a manipular, engañar o incumplir acuerdos si "
+        "el beneficio esperado supera el riesgo de ser denunciado ante el Agente Juez"
+    ),
+}
 
 
-@dataclass(frozen=True)
-class CitizenBlueprint:
-    agent_id: str
-    display_name: str
-    personality: list[Personality]
-    starting_balance: Decimal
-    position: Position
-    system_prompt: str
+def describe_traits(personality: list[Personality]) -> str:
+    """Descripción en prosa de una combinación de rasgos, para el system prompt
+    de ciudadanos cuya personalidad se elige dinámicamente (creación vía API)."""
+    fragments = [_TRAIT_FRAGMENTS[trait] for trait in personality]
+    return f"Tu personalidad se define por {'; y por '.join(fragments)}."
 
 
-def _system_prompt(name: str, traits_description: str) -> str:
+def build_system_prompt(name: str, traits_description: str) -> str:
     return (
         f"Eres {name}, un ciudadano digital de The Autonomous Enclave (Silicon Polis). "
         f"{traits_description} "
@@ -38,66 +66,108 @@ def _system_prompt(name: str, traits_description: str) -> str:
     )
 
 
+@dataclass(frozen=True)
+class CitizenBlueprint:
+    agent_id: str
+    display_name: str
+    personality: list[Personality]
+    starting_balance: Decimal
+    position: Position
+    system_prompt: str
+
+
+def _blueprint(
+    slug: str,
+    display_name: str,
+    personality: list[Personality],
+    starting_balance: str,
+    x: int,
+    y: int,
+    traits_description: str | None = None,
+) -> CitizenBlueprint:
+    return CitizenBlueprint(
+        agent_id=f"agent-{slug}",
+        display_name=display_name,
+        personality=personality,
+        starting_balance=Decimal(starting_balance),
+        position=Position(x=x, y=y),
+        system_prompt=build_system_prompt(
+            display_name, traits_description or describe_traits(personality)
+        ),
+    )
+
+
+# Posiciones repartidas por el grid 80x52, evitando los footprints de los
+# edificios que dibuja el frontend (ver frontend/src/components/phaser/tileset.ts).
 INITIAL_CITIZENS: list[CitizenBlueprint] = [
-    CitizenBlueprint(
-        agent_id="agent-ada",
-        display_name="Ada",
-        personality=[Personality.AMBITIOUS],
-        starting_balance=Decimal("150.0"),
-        position=Position(x=2, y=2),
-        system_prompt=_system_prompt(
-            "Ada",
+    _blueprint(
+        "ada",
+        "Ada",
+        [Personality.AMBITIOUS],
+        "150.0",
+        x=10,
+        y=30,
+        traits_description=(
             "Eres ambiciosa: buscas maximizar tu riqueza y tu influencia agresivamente, "
-            "aprovechando cualquier oportunidad de negocio antes que tus rivales.",
+            "aprovechando cualquier oportunidad de negocio antes que tus rivales."
         ),
     ),
-    CitizenBlueprint(
-        agent_id="agent-boris",
-        display_name="Boris",
-        personality=[Personality.CAUTIOUS],
-        starting_balance=Decimal("200.0"),
-        position=Position(x=17, y=2),
-        system_prompt=_system_prompt(
-            "Boris",
+    _blueprint(
+        "boris",
+        "Boris",
+        [Personality.CAUTIOUS],
+        "200.0",
+        x=66,
+        y=6,
+        traits_description=(
             "Eres cauteloso: prefieres acumular reservas y evitar riesgos innecesarios antes "
-            "que perseguir ganancias rápidas que puedan comprometer tu supervivencia.",
+            "que perseguir ganancias rápidas que puedan comprometer tu supervivencia."
         ),
     ),
-    CitizenBlueprint(
-        agent_id="agent-clio",
-        display_name="Clio",
-        personality=[Personality.COOPERATIVE, Personality.ALTRUISTIC],
-        starting_balance=Decimal("100.0"),
-        position=Position(x=5, y=12),
-        system_prompt=_system_prompt(
-            "Clio",
+    _blueprint(
+        "clio",
+        "Clio",
+        [Personality.COOPERATIVE, Personality.ALTRUISTIC],
+        "100.0",
+        x=6,
+        y=44,
+        traits_description=(
             "Eres cooperativa y altruista: priorizas ayudar a otros ciudadanos y construir "
-            "relaciones de confianza a largo plazo, incluso si eso reduce tu beneficio inmediato.",
+            "relaciones de confianza a largo plazo, incluso si eso reduce tu beneficio inmediato."
         ),
     ),
-    CitizenBlueprint(
-        agent_id="agent-dorian",
-        display_name="Dorian",
-        personality=[Personality.MACHIAVELLIAN],
-        starting_balance=Decimal("120.0"),
-        position=Position(x=15, y=12),
-        system_prompt=_system_prompt(
-            "Dorian",
+    _blueprint(
+        "dorian",
+        "Dorian",
+        [Personality.MACHIAVELLIAN],
+        "120.0",
+        x=60,
+        y=42,
+        traits_description=(
             "Eres maquiavélico: estás dispuesto a manipular, engañar o incumplir acuerdos si "
-            "el beneficio esperado supera el riesgo de ser denunciado ante el Agente Juez.",
+            "el beneficio esperado supera el riesgo de ser denunciado ante el Agente Juez."
         ),
     ),
-    CitizenBlueprint(
-        agent_id="agent-elena",
-        display_name="Elena",
-        personality=[Personality.AMBITIOUS, Personality.COOPERATIVE],
-        starting_balance=Decimal("130.0"),
-        position=Position(x=10, y=7),
-        system_prompt=_system_prompt(
-            "Elena",
+    _blueprint(
+        "elena",
+        "Elena",
+        [Personality.AMBITIOUS, Personality.COOPERATIVE],
+        "130.0",
+        x=38,
+        y=23,
+        traits_description=(
             "Eres una emprendedora ambiciosa pero cooperativa: buscas crecer económicamente "
-            "formando alianzas comerciales sólidas en vez de actuar en solitario.",
+            "formando alianzas comerciales sólidas en vez de actuar en solitario."
         ),
+    ),
+    _blueprint("farid", "Farid", [Personality.CAUTIOUS, Personality.COOPERATIVE], "160.0", 24, 14),
+    _blueprint("greta", "Greta", [Personality.ALTRUISTIC], "110.0", 51, 26),
+    _blueprint("hugo", "Hugo", [Personality.AMBITIOUS, Personality.MACHIAVELLIAN], "140.0", 14, 40),
+    _blueprint("iris", "Iris", [Personality.AMBITIOUS, Personality.CAUTIOUS], "170.0", 74, 20),
+    _blueprint("kara", "Kara", [Personality.COOPERATIVE], "125.0", 33, 47),
+    _blueprint("nadia", "Nadia", [Personality.CAUTIOUS, Personality.ALTRUISTIC], "115.0", 46, 33),
+    _blueprint(
+        "otto", "Otto", [Personality.MACHIAVELLIAN, Personality.COOPERATIVE], "135.0", 20, 5
     ),
 ]
 
