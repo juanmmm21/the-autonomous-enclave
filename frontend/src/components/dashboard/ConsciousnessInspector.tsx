@@ -54,7 +54,7 @@ export function ConsciousnessInspector({
 }: ConsciousnessInspectorProps) {
   if (!agent) {
     return (
-      <section className="panel flex min-h-[180px] flex-col items-center justify-center gap-2 p-6 text-center">
+      <section className="panel flex min-h-[180px] shrink-0 flex-col items-center justify-center gap-2 p-6 text-center">
         <span aria-hidden="true" className="text-xl text-enclave-ink-dim">
           ◎
         </span>
@@ -68,7 +68,7 @@ export function ConsciousnessInspector({
   const statusMeta = STATUS_META[agent.status];
 
   return (
-    <section className="panel overflow-hidden">
+    <section className="panel shrink-0 overflow-hidden">
       <header className="border-b border-enclave-edge px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="truncate text-sm font-bold tracking-wide text-enclave-ink">

@@ -60,7 +60,7 @@ export function DivineConsole({ selectedAgentId }: DivineConsoleProps) {
   };
 
   return (
-    <section className="panel overflow-hidden">
+    <section className="panel shrink-0 overflow-hidden">
       <header className="flex items-center gap-2.5 border-b border-enclave-warn/25 bg-enclave-warn/5 px-4 py-2.5">
         <span
           aria-hidden="true"

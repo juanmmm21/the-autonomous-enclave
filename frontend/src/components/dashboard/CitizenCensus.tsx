@@ -31,7 +31,7 @@ export function CitizenCensus({ agents, selectedAgentId, onSelectAgent }: Citize
   );
 
   return (
-    <section className="panel">
+    <section className="panel shrink-0">
       <header className="flex items-center justify-between border-b border-enclave-edge px-4 py-2">
         <h2 className="micro-label text-enclave-ink-mid">Censo de ciudadanos</h2>
         <span className="text-[10px] tabular-nums text-enclave-ink-dim">{agents.length}</span>

@@ -28,7 +28,7 @@ function StatTile({ label, value, unit }: StatTileProps) {
 
 export function EconomyPanel({ indicators }: EconomyPanelProps) {
   return (
-    <section className="panel">
+    <section className="panel shrink-0">
       <header className="flex items-center justify-between border-b border-enclave-edge px-4 py-2">
         <h2 className="micro-label text-enclave-ink-mid">Telemetría macroeconómica</h2>
         <span

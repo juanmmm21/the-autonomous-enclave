@@ -91,7 +91,7 @@ export function CitizenFoundry() {
   const canSubmit = state !== "pending" && displayName.trim().length > 0 && traits.length > 0;
 
   return (
-    <section className="panel overflow-hidden">
+    <section className="panel shrink-0 overflow-hidden">
       <header className="flex items-center gap-2.5 border-b border-enclave-accent/25 bg-enclave-accent/5 px-4 py-2.5">
         <span
           aria-hidden="true"

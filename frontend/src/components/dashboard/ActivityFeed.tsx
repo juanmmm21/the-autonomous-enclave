@@ -60,7 +60,7 @@ export function ActivityFeed({ offers, contracts, rulings, agents }: ActivityFee
   const displayName = (agentId: string): string => nameById.get(agentId) ?? agentId;
 
   return (
-    <section className="panel">
+    <section className="panel shrink-0">
       <header className="flex items-center justify-between border-b border-enclave-edge px-4 py-2">
         <h2 className="micro-label text-enclave-ink-mid">Actividad económica</h2>
         <span
