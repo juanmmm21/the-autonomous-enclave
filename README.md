@@ -83,6 +83,8 @@ the-autonomous-enclave/
 - Docker (for Redis, Qdrant and Postgres)
 - [Ollama](https://ollama.com) running locally, with at least one model pulled (e.g. `ollama pull llama3.2`)
 
+**macOS / Linux**
+
 ```bash
 # Infrastructure
 docker compose up -d
@@ -98,7 +100,29 @@ cd ../frontend
 npm install
 ```
 
+**Windows (PowerShell)**
+
+```powershell
+# Infrastructure
+docker compose up -d
+
+# Backend
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+copy ..\.env.example ..\.env   # adjust models/URLs if your setup differs from the defaults
+
+# Frontend
+cd ..\frontend
+npm install
+```
+
+> On Windows you can also just use WSL2 and follow the macOS/Linux commands as-is.
+
 ## Usage
+
+**macOS / Linux**
 
 ```bash
 # Backend (port 8000)
@@ -107,6 +131,19 @@ uvicorn enclave.main:app --reload --port 8000
 
 # Frontend (port 5173, proxies /api to localhost:8000)
 cd frontend && npm run dev
+```
+
+**Windows (PowerShell)**
+
+```powershell
+# Backend (port 8000)
+cd backend
+.venv\Scripts\Activate.ps1
+uvicorn enclave.main:app --reload --port 8000
+
+# Frontend (port 5173, proxies /api to localhost:8000)
+cd frontend
+npm run dev
 ```
 
 With both running, `http://localhost:5173` shows "God Mode": the pixel-art plaza with a market and a bank in the background and the five seeded citizens (Ada, Boris, Clio, Dorian, Elena — each with a distinct personality) walking around it, the economic indicators panel and, once you select an agent, its Consciousness Inspector with inventory, trust links and a live reasoning feed.
@@ -129,9 +166,28 @@ All endpoints live under `/api/v1`. Financial amounts (`balance`, `unit_price`, 
 
 ## Development
 
+**macOS / Linux**
+
 ```bash
 # Backend
 cd backend && source .venv/bin/activate
+pytest
+ruff check .
+mypy --strict src/
+
+# Frontend
+cd frontend
+npm run typecheck
+npm run lint
+npm run build
+```
+
+**Windows (PowerShell)**
+
+```powershell
+# Backend
+cd backend
+.venv\Scripts\Activate.ps1
 pytest
 ruff check .
 mypy --strict src/
