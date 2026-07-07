@@ -170,7 +170,7 @@ export function App() {
         </div>
 
         <aside
-          className={`flex shrink-0 flex-col gap-3 overflow-y-auto border-l border-enclave-edge bg-enclave-panel transition-[width,padding] duration-200 ${
+          className={`flex min-h-0 shrink-0 flex-col gap-3 overflow-y-auto border-l border-enclave-edge bg-enclave-panel transition-[width,padding] duration-200 ${
             isAsideOpen ? "w-[22rem] p-3" : "w-0 overflow-hidden p-0"
           }`}
         >
