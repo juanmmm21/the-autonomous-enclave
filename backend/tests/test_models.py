@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -12,9 +13,11 @@ from enclave.models import (
     AgentState,
     AgentStatus,
     AssetType,
+    EconomicIndicators,
     MarketOffer,
     Personality,
     Position,
+    TickEvent,
 )
 
 
@@ -107,3 +110,46 @@ def test_agent_action_default_payload_is_empty_dict_when_key_absent() -> None:
     action = AgentAction(action_type=ActionType.IDLE, reasoning="nada que hacer")
 
     assert action.payload == {}
+
+
+def _make_tick_event(**overrides: object) -> TickEvent:
+    defaults: dict[str, object] = {
+        "tick": 1,
+        "timestamp": datetime.now(UTC),
+        "agents": [],
+        "indicators": EconomicIndicators(
+            gini_index=0.0, inflation_rate=0.0, virtual_gdp=0.0, transactions_per_minute=0.0
+        ),
+        "ticks_per_day": 10,
+    }
+    defaults.update(overrides)
+    return TickEvent.model_validate(defaults)
+
+
+def test_tick_event_activity_feed_fields_default_to_empty() -> None:
+    event = _make_tick_event()
+
+    assert event.market_offers == []
+    assert event.open_contracts == []
+    assert event.recent_rulings == []
+
+
+def test_tick_event_rejects_a_non_positive_ticks_per_day() -> None:
+    with pytest.raises(ValidationError):
+        _make_tick_event(ticks_per_day=0)
+
+
+def test_tick_event_serializes_nested_money_amounts_as_strings() -> None:
+    ruling = {
+        "ruling_id": "ruling-1",
+        "contract_id": "contract-1",
+        "at_fault_agent": "agent-1",
+        "verdict": "breached terms",
+        "penalty": Decimal("12.5"),
+        "ruled_at_tick": 3,
+    }
+    event = _make_tick_event(recent_rulings=[ruling])
+
+    payload = json.loads(event.model_dump_json())
+
+    assert payload["recent_rulings"][0]["penalty"] == "12.5"

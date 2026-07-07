@@ -90,4 +90,11 @@ export interface TickEvent {
   timestamp: string;
   agents: AgentState[];
   indicators: EconomicIndicators;
+  /** Ticks que dura un día simulado; el mapa deriva de aquí la fase día/noche. */
+  ticks_per_day: number;
+  market_offers: MarketOffer[];
+  /** Contratos en estado `pending` o `disputed`, del más reciente al más antiguo. */
+  open_contracts: Contract[];
+  /** Últimos veredictos del Juez, del más reciente al más antiguo. */
+  recent_rulings: JudgeRuling[];
 }

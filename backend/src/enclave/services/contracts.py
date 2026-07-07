@@ -59,6 +59,17 @@ class ContractRegistry:
     def disputed_contracts(self) -> list[Contract]:
         return [c for c in self._contracts.values() if c.status == ContractStatus.DISPUTED]
 
+    def open_contracts(self) -> list[Contract]:
+        """Contratos aún sin resolver (PENDING o DISPUTED), del más reciente al
+        más antiguo. Es lo que el `TickEngine` publica en cada `TickEvent` para
+        el feed de actividad económica del frontend."""
+        open_statuses = (ContractStatus.PENDING, ContractStatus.DISPUTED)
+        return sorted(
+            (c for c in self._contracts.values() if c.status in open_statuses),
+            key=lambda contract: contract.created_at_tick,
+            reverse=True,
+        )
+
     def expire_overdue_contracts(
         self, current_tick: int, grace_period_ticks: int
     ) -> list[Contract]:

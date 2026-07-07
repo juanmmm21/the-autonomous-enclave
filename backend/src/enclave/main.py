@@ -44,7 +44,10 @@ async def _tick_loop(
         await asyncio.sleep(interval_seconds)
         try:
             await engine.run_tick()
-            await judge.review_disputed_contracts(engine.current_tick)
+            # Los veredictos se retienen en el engine: sin esto serían invisibles
+            # para el frontend, que los muestra en el feed de actividad económica.
+            rulings = await judge.review_disputed_contracts(engine.current_tick)
+            engine.record_rulings(rulings)
             if engine.current_tick % ticks_per_day == 0:
                 await ledger_store.save_snapshot(engine.bank, engine.quotas)
         except Exception:
@@ -73,6 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         memory_store,
         quota_ledger,
         contracts,
+        broker,
         energy_price=Decimal("1.0"),
         ticks_per_day=settings.ticks_per_day,
         tick_interval_seconds=settings.tick_interval_seconds,

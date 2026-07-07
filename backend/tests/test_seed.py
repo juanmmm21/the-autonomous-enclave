@@ -15,8 +15,11 @@ def _make_engine() -> TickEngine:
     quotas = InferenceQuotaLedger()
     contracts = ContractRegistry()
     memory_store = FakeMemoryStore()
-    runtime = AgentRuntime(FakeLLM(), FakeBroker(), bank, contracts, memory_store, quotas)
-    return TickEngine(runtime, bank, memory_store, quotas, contracts, energy_price=Decimal("1.0"))
+    broker = FakeBroker()
+    runtime = AgentRuntime(FakeLLM(), broker, bank, contracts, memory_store, quotas)
+    return TickEngine(
+        runtime, bank, memory_store, quotas, contracts, broker, energy_price=Decimal("1.0")
+    )
 
 
 def test_seed_registers_every_blueprint() -> None:

@@ -196,10 +196,29 @@ class EconomicIndicators(BaseModel):
     transactions_per_minute: float
 
 
+# Los montos anidados (ofertas, contratos, veredictos) ya serializan sus
+# Decimal como string vía su propio MoneyModel; TickEvent no tiene montos propios.
 class TickEvent(BaseModel):
-    """Payload difundido por WebSocket en cada tick al frontend."""
+    """Payload difundido por WebSocket en cada tick al frontend.
+
+    Además del snapshot de agentes e indicadores macro, expone la actividad
+    económica que el backend ya calcula (mercado, contratos y veredictos del
+    Juez) para que el observador pueda verla en la UI en vez de que exista
+    solo en memoria del servidor.
+    """
 
     tick: int
     timestamp: datetime
     agents: list[AgentState]
     indicators: EconomicIndicators
+    # Ticks que dura un día simulado: el frontend lo usa para derivar la fase
+    # día/noche sin duplicar la configuración del backend.
+    ticks_per_day: int = Field(ge=1)
+    market_offers: list[MarketOffer] = Field(default_factory=list)
+    open_contracts: list[Contract] = Field(
+        default_factory=list, description="Contratos en estado PENDING o DISPUTED"
+    )
+    recent_rulings: list[JudgeRuling] = Field(
+        default_factory=list,
+        description="Últimos veredictos del Juez, del más reciente al más antiguo",
+    )

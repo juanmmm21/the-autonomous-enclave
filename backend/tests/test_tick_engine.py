@@ -10,6 +10,9 @@ from enclave.models import (
     AgentAction,
     AgentState,
     AgentStatus,
+    AssetType,
+    JudgeRuling,
+    MarketOffer,
     PerceivedContext,
     Personality,
     Position,
@@ -18,7 +21,7 @@ from enclave.services.agent_runtime import AgentRuntime
 from enclave.services.contracts import ContractRegistry
 from enclave.services.economy import CentralBank
 from enclave.services.inference_market import InferenceQuotaLedger
-from enclave.services.tick_engine import TickEngine
+from enclave.services.tick_engine import RECENT_RULINGS_BUFFER_SIZE, TickEngine
 
 
 class _BrokenBroker(FakeBroker):
@@ -51,8 +54,9 @@ def _make_engine(
     quotas = InferenceQuotaLedger()
     contract_registry = contracts or ContractRegistry()
     memory = memory_store or FakeMemoryStore()
+    broker_instance = broker or FakeBroker()
     runtime = AgentRuntime(
-        llm or FakeLLM(), broker or FakeBroker(), bank, contract_registry, memory, quotas
+        llm or FakeLLM(), broker_instance, bank, contract_registry, memory, quotas
     )
     engine = TickEngine(
         runtime,
@@ -60,6 +64,7 @@ def _make_engine(
         memory,
         quotas,
         contract_registry,
+        broker_instance,
         energy_price=Decimal("1.0"),
         ticks_per_day=ticks_per_day,
         tick_interval_seconds=tick_interval_seconds,
@@ -313,3 +318,109 @@ async def test_apply_energy_shock_rejects_non_positive_factor() -> None:
 
     with pytest.raises(ValueError, match="positive"):
         engine.apply_energy_shock(Decimal("0"))
+
+
+async def test_tick_event_includes_open_market_offers() -> None:
+    broker = FakeBroker()
+    engine, _, _ = _make_engine(broker=broker)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    offer = MarketOffer(
+        offer_id="offer-1",
+        seller_id="agent-1",
+        asset_type=AssetType.VECTOR_PACK,
+        quantity=2,
+        unit_price=Decimal("7.5"),
+        created_at_tick=0,
+    )
+    await broker.publish_offer(offer)
+
+    event = await engine.run_tick()
+
+    assert [o.offer_id for o in event.market_offers] == ["offer-1"]
+
+
+async def test_tick_event_includes_open_contracts_but_not_resolved_ones() -> None:
+    engine, _, contracts = _make_engine(ticks_per_day=1_000)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    pending = contracts.create_contract("agent-1", "agent-2", "deliver", Decimal("10.0"), tick=0)
+    fulfilled = contracts.create_contract("agent-1", "agent-2", "done", Decimal("5.0"), tick=0)
+    contracts.mark_fulfilled(fulfilled.contract_id)
+
+    event = await engine.run_tick()
+
+    assert [c.contract_id for c in event.open_contracts] == [pending.contract_id]
+
+
+async def test_tick_event_carries_ticks_per_day_for_the_day_night_cycle() -> None:
+    engine, _, _ = _make_engine(ticks_per_day=7)
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    event = await engine.run_tick()
+
+    assert event.ticks_per_day == 7
+
+
+def _make_ruling(ruling_id: str, tick: int) -> JudgeRuling:
+    return JudgeRuling(
+        ruling_id=ruling_id,
+        contract_id="contract-1",
+        at_fault_agent="agent-1",
+        verdict="breached terms",
+        penalty=Decimal("5.0"),
+        ruled_at_tick=tick,
+    )
+
+
+async def test_recorded_rulings_appear_in_the_next_tick_event_newest_first() -> None:
+    engine, _, _ = _make_engine()
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    engine.record_rulings([_make_ruling("ruling-1", tick=1), _make_ruling("ruling-2", tick=2)])
+
+    event = await engine.run_tick()
+
+    assert [r.ruling_id for r in event.recent_rulings] == ["ruling-2", "ruling-1"]
+
+
+async def test_rulings_buffer_is_bounded_and_keeps_the_most_recent() -> None:
+    engine, _, _ = _make_engine()
+    engine.record_rulings(
+        [_make_ruling(f"ruling-{i}", tick=i) for i in range(RECENT_RULINGS_BUFFER_SIZE + 5)]
+    )
+
+    rulings = engine.recent_rulings
+
+    assert len(rulings) == RECENT_RULINGS_BUFFER_SIZE
+    # El más nuevo primero; los 5 más antiguos fueron desplazados fuera del buffer.
+    assert rulings[0].ruling_id == f"ruling-{RECENT_RULINGS_BUFFER_SIZE + 4}"
+    assert rulings[-1].ruling_id == "ruling-5"
+
+
+async def test_snapshot_event_does_not_advance_the_clock() -> None:
+    engine, _, _ = _make_engine()
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+    await engine.run_tick()
+    balance_before = engine.agent_snapshot("agent-1").balance
+
+    event = await engine.snapshot_event()
+
+    assert event.tick == 1
+    assert engine.current_tick == 1
+    assert engine.agent_snapshot("agent-1").balance == balance_before
+    assert [agent.agent_id for agent in event.agents] == ["agent-1"]
+
+
+class _OfferlessBrokenBroker(FakeBroker):
+    """Broker cuyo tablón de mercado falla (p.ej. Redis caído a mitad de tick)."""
+
+    async def fetch_open_offers(self) -> list[MarketOffer]:
+        raise ConnectionError("redis is unreachable")
+
+
+async def test_tick_event_degrades_to_empty_offers_when_the_market_board_fails() -> None:
+    engine, _, _ = _make_engine(broker=_OfferlessBrokenBroker())
+    engine.register_agent(_make_agent_state("agent-1"), system_prompt="be productive")
+
+    event = await engine.run_tick()
+
+    assert event.tick == 1
+    assert event.market_offers == []
