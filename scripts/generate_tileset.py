@@ -87,6 +87,9 @@ GREEN_LED = rgb("34d399")
 SLATE_BODY = rgb("343c50")   # judicial hall walls
 SLATE_DK = rgb("262d3e")
 WINDOW_DK = rgb("121826")
+# violet accent for vector-memory tech (muted, sits next to TEAL without clashing)
+VIOLET = rgb("8b7ae8")
+VIOLET_DIM = rgb("574b96")
 
 
 class Px:
@@ -564,6 +567,205 @@ def hall() -> Px:
     return t
 
 
+def vector_lab() -> Px:
+    """Vector-memory lab (vector_pack): metal slab with a glass dome holding a
+    floating violet memory crystal."""
+    t = Px(32, 30)
+    # main slab
+    t.rect(3, 12, 26, 17, M_BASE)
+    t.rect(3, 12, 26, 2, M_DK)           # roof band
+    t.hline(3, 28, 12, M_LT)
+    t.vline(3, 12, 28, M_LT)             # lit left edge
+    t.vline(28, 12, 28, M_DK)
+    # glass dome on the roof (violet-lit from the crystal inside)
+    for dy, half in ((0, 2), (1, 4), (2, 5), (3, 6), (4, 6)):
+        t.hline(16 - half, 15 + half, 3 + dy, WINDOW_DK)
+    t.hline(14, 17, 3, M_HI)             # dome light catch
+    t.p(11, 5, VIOLET_DIM)
+    t.p(20, 5, VIOLET_DIM)
+    # floating crystal inside the dome
+    t.p(15, 5, VIOLET_DIM)
+    t.hline(14, 16, 6, VIOLET)
+    t.p(15, 6, rgb("cfc4ff"))
+    t.p(15, 7, VIOLET_DIM)
+    t.hline(9, 22, 8, M_DK)              # dome collar
+    t.hline(9, 22, 9, M_LT)
+    # sample-tank windows, violet-lit
+    for wx in (6, 13, 22):
+        t.rect(wx, 15, 3, 6, WINDOW_DK)
+        t.vline(wx + 1, 16, 19, VIOLET_DIM)
+        t.p(wx + 1, 17, VIOLET)
+    # conduit running to the door
+    t.hline(6, 25, 23, M_DK)
+    t.p(9, 23, TEAL_DIM)
+    t.p(19, 23, TEAL_DIM)
+    # doorway
+    t.rect(26, 22, 3, 7, WINDOW_DK)
+    t.p(26, 22, VIOLET)
+    t.p(28, 22, VIOLET)
+    t.outline()
+    return t
+
+
+def signal_tower() -> Px:
+    """Data-signal tower (alpha_signal): squat relay bunker + lattice mast
+    radiating amber signal arcs."""
+    t = Px(32, 36)
+    # relay bunker
+    t.rect(4, 24, 24, 11, M_BASE)
+    t.rect(4, 24, 24, 2, M_DK)
+    t.hline(4, 27, 24, M_LT)
+    t.vline(4, 24, 34, M_LT)
+    t.vline(27, 24, 34, M_DK)
+    # bunker windows with amber ticker glow
+    for wx in (7, 13, 22):
+        t.rect(wx, 27, 3, 3, WINDOW_DK)
+        t.hline(wx, wx + 2, 28, AMBER_DIM)
+        t.p(wx + 1, 28, AMBER)
+    # doorway
+    t.rect(17, 30, 3, 5, WINDOW_DK)
+    t.p(17, 30, AMBER_DIM)
+    t.p(19, 30, AMBER_DIM)
+    # lattice mast
+    t.vline(14, 6, 23, M_DK)
+    t.vline(17, 6, 23, M_DK)
+    for y in (9, 13, 17, 21):            # cross braces
+        t.hline(14, 17, y, M_BASE)
+    t.hline(13, 18, 23, M_LT)            # mast footing
+    # antenna tip + beacon
+    t.vline(15, 2, 6, M_BASE)
+    t.p(15, 1, RED)
+    t.p(16, 5, TEAL)                     # status light
+    # radiating signal arcs (amber, alpha-signal flavor): `)(` a ambos lados del beacon
+    for side in (-1, 1):
+        cx = 15 if side < 0 else 16
+        t.p(cx + side * 3, 2, AMBER)
+        t.p(cx + side * 4, 3, AMBER)
+        t.p(cx + side * 4, 4, AMBER)
+        t.p(cx + side * 3, 5, AMBER)
+        t.p(cx + side * 6, 1, AMBER_DIM)
+        t.p(cx + side * 7, 2, AMBER_DIM)
+        t.p(cx + side * 7, 4, AMBER_DIM)
+        t.p(cx + side * 6, 5, AMBER_DIM)
+    t.outline()
+    return t
+
+
+def script_workshop() -> Px:
+    """Code-script workshop (code_script): timber garage with an open bay, a
+    workbench and a green `</>` sign."""
+    t = Px(32, 26)
+    # slanted metal roof
+    t.rect(1, 6, 30, 3, M_BASE)
+    t.hline(1, 30, 6, M_HI)
+    t.hline(1, 30, 8, M_DK)
+    # timber walls with plank seams
+    t.rect(2, 9, 28, 16, W_BASE)
+    for y in (13, 17, 21):
+        t.hline(2, 29, y, W_DK)
+    t.vline(2, 9, 24, W_LT)
+    t.vline(29, 9, 24, W_DK)
+    # open work bay: dark interior, workbench with glowing terminal
+    t.rect(4, 12, 12, 13, rgb("1b1610"))
+    t.rect(5, 18, 10, 2, W_LT)           # bench top
+    t.hline(5, 14, 18, W_HI)
+    t.rect(7, 15, 3, 2, WINDOW_DK)       # terminal screen
+    t.p(8, 15, GREEN_LED)
+    t.p(7, 16, GREEN_LED)
+    t.p(12, 16, AMBER_DIM)               # soldering glow
+    # `</>` sign on a dark board
+    t.rect(18, 10, 9, 5, rgb("161c2a"))
+    t.p(19, 12, GREEN_LED)               # <
+    t.p(20, 11, GREEN_LED)
+    t.p(20, 13, GREEN_LED)
+    t.p(22, 11, GREEN_LED)               # /
+    t.p(22, 13, GREEN_LED)
+    t.vline(22, 11, 13, rgb("1f8a5f"))
+    t.p(25, 12, GREEN_LED)               # >
+    t.p(24, 11, GREEN_LED)
+    t.p(24, 13, GREEN_LED)
+    # side door + crate
+    t.rect(19, 19, 3, 6, WINDOW_DK)
+    t.p(19, 19, WARM_DIM)
+    t.rect(24, 21, 4, 4, W_LT)
+    t.hline(24, 27, 21, W_HI)
+    t.vline(27, 21, 24, W_DK)
+    t.outline()
+    return t
+
+
+def derivatives_exchange() -> Px:
+    """Derivatives exchange (financial_derivative): slate trading house with an
+    amber rising-chart sign and a glowing ticker band."""
+    t = Px(32, 30)
+    # main body
+    t.rect(3, 8, 26, 21, SLATE_BODY)
+    t.rect(3, 8, 26, 2, SLATE_DK)
+    t.hline(3, 28, 8, M_LT)
+    t.vline(3, 8, 28, M_LT)
+    t.vline(28, 8, 28, SLATE_DK)
+    # rooftop sign: rising chart line on a dark board
+    t.rect(8, 1, 16, 6, rgb("161c2a"))
+    t.hline(9, 22, 6, SLATE_DK)          # board base
+    for i, (x, y) in enumerate(((10, 5), (12, 4), (14, 5), (16, 3), (18, 3), (20, 2))):
+        t.p(x, y, AMBER if i >= 3 else AMBER_DIM)
+        if i == 5:                        # arrowhead tip
+            t.p(21, 2, AMBER)
+            t.p(20, 3, AMBER_DIM)
+    # ticker band across the facade
+    t.hline(4, 27, 12, WINDOW_DK)
+    for x in (6, 9, 13, 16, 20, 24):
+        t.p(x, 12, AMBER if x % 2 == 0 else AMBER_DIM)
+    # two rows of warm-lit windows
+    for wy in (15, 20):
+        for wx in (6, 11, 19, 24):
+            t.rect(wx, wy, 3, 3, WINDOW_DK)
+            t.p(wx + 1, wy + 1, WARM)
+            t.p(wx, wy + 2, WARM_DIM)
+    # doorway with amber lintel
+    t.rect(14, 24, 4, 5, WINDOW_DK)
+    t.hline(13, 18, 23, SLATE_DK)
+    t.p(14, 24, AMBER_DIM)
+    t.p(17, 24, AMBER_DIM)
+    t.vline(15, 26, 28, rgb("0c1018"))
+    t.outline()
+    return t
+
+
+def housing_block() -> Px:
+    """Residential block (non-economic filler): slate apartments with a mix of
+    warm-lit and dark windows and a rooftop solar panel."""
+    t = Px(32, 32)
+    # body
+    t.rect(4, 6, 24, 25, SLATE_BODY)
+    t.rect(4, 6, 24, 2, SLATE_DK)        # parapet
+    t.hline(4, 27, 6, M_LT)
+    t.vline(4, 6, 30, M_LT)
+    t.vline(27, 6, 30, SLATE_DK)
+    # rooftop solar panel + vent
+    t.rect(7, 3, 8, 3, rgb("1e3a5c"))
+    t.hline(7, 14, 3, rgb("2c5480"))
+    t.p(8, 4, rgb("6ea0cc"))
+    t.rect(19, 4, 3, 2, M_DK)
+    # window grid: deterministic mix of lit/dark flats
+    rng = random.Random("housing")
+    for row, wy in enumerate((9, 14, 19, 24)):
+        for col, wx in enumerate((7, 12, 18, 23)):
+            t.rect(wx, wy, 3, 3, WINDOW_DK)
+            if rng.random() < 0.45:
+                t.p(wx + 1, wy + 1, WARM)
+                t.p(wx + 2, wy + 2, WARM_DIM)
+            elif rng.random() < 0.2:
+                t.p(wx + 1, wy + 1, TEAL_DIM)  # someone's terminal still on
+    # entrance
+    t.rect(14, 27, 4, 4, WINDOW_DK)
+    t.hline(13, 18, 26, SLATE_DK)
+    t.p(14, 27, WARM_DIM)
+    t.p(17, 27, WARM_DIM)
+    t.outline()
+    return t
+
+
 # ---------------------------------------------------------------------------
 # Citizens: 6-frame grayscale spritesheets (tinted by status at runtime)
 # frames: [0] idle A, [1] idle B (breath), [2] step-L, [3] pass, [4] step-R, [5] pass'
@@ -712,6 +914,11 @@ def generate_all() -> None:
     save(market(), "market")
     save(bank(), "bank")
     save(hall(), "hall")
+    save(vector_lab(), "lab")
+    save(signal_tower(), "signal_tower")
+    save(script_workshop(), "workshop")
+    save(derivatives_exchange(), "exchange")
+    save(housing_block(), "housing")
     for style in STYLES:
         citizen_sheet(style)
 

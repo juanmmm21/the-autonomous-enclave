@@ -73,10 +73,11 @@ class ActionType(StrEnum):
     IDLE = "idle"
 
 
-# Debe coincidir con GRID_WIDTH/GRID_HEIGHT en frontend/src/components/phaser/MainScene.ts,
-# que renderiza el mapa sobre el que se mueven estas coordenadas.
-GRID_WIDTH = 20
-GRID_HEIGHT = 15
+# Debe coincidir con GRID_WIDTH/GRID_HEIGHT en
+# frontend/src/components/phaser/mapConstants.ts, que renderiza el mapa sobre
+# el que se mueven estas coordenadas.
+GRID_WIDTH = 80
+GRID_HEIGHT = 52
 
 
 class Position(BaseModel):

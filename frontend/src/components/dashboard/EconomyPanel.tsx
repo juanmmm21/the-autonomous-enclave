@@ -38,7 +38,9 @@ export function EconomyPanel({ indicators }: EconomyPanelProps) {
           title={indicators ? "recibiendo datos" : "sin datos"}
         />
       </header>
-      <div className="grid grid-cols-2 gap-2.5 p-3 xl:grid-cols-4">
+      {/* 2x2 fijo: este panel ahora vive en el panel lateral estrecho (Cambio 1), ya
+          no en la columna ancha original, así que 4 columnas apretarían demasiado. */}
+      <div className="grid grid-cols-2 gap-2.5 p-3">
         <StatTile
           label="Índice de Gini"
           value={indicators ? indicators.gini_index.toFixed(3) : "—"}

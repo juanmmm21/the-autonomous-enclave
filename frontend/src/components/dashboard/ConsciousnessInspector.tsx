@@ -5,6 +5,9 @@ import type { AgentState, AgentStatus } from "../../types/api";
 interface ConsciousnessInspectorProps {
   agent: AgentState | null;
   reasoningLog: string[];
+  /** Cámara de mapa siguiendo a este agente (Cambio 4b): modo activable/desactivable. */
+  isFollowing: boolean;
+  onToggleFollow: () => void;
 }
 
 const STATUS_META: Record<AgentStatus, { label: string; dot: string; chip: string }> = {
@@ -43,7 +46,12 @@ function KeyValueRow({ name, value }: { name: string; value: string }) {
   );
 }
 
-export function ConsciousnessInspector({ agent, reasoningLog }: ConsciousnessInspectorProps) {
+export function ConsciousnessInspector({
+  agent,
+  reasoningLog,
+  isFollowing,
+  onToggleFollow,
+}: ConsciousnessInspectorProps) {
   if (!agent) {
     return (
       <section className="panel flex min-h-[180px] flex-col items-center justify-center gap-2 p-6 text-center">
@@ -73,18 +81,32 @@ export function ConsciousnessInspector({ agent, reasoningLog }: ConsciousnessIns
             {statusMeta.label}
           </span>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <code className="rounded-sm border border-enclave-edge bg-enclave-inset px-1.5 py-0.5 text-[10px] text-enclave-ink-dim">
-            {agent.agent_id}
-          </code>
-          {agent.personality.map((trait) => (
-            <span
-              key={trait}
-              className="rounded-sm border border-enclave-edge bg-enclave-inset px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-enclave-ink-mid"
-            >
-              {trait}
-            </span>
-          ))}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <code className="rounded-sm border border-enclave-edge bg-enclave-inset px-1.5 py-0.5 text-[10px] text-enclave-ink-dim">
+              {agent.agent_id}
+            </code>
+            {agent.personality.map((trait) => (
+              <span
+                key={trait}
+                className="rounded-sm border border-enclave-edge bg-enclave-inset px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-enclave-ink-mid"
+              >
+                {trait}
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onToggleFollow}
+            aria-pressed={isFollowing}
+            className={`shrink-0 rounded-sm border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+              isFollowing
+                ? "border-enclave-accent/50 bg-enclave-accent/15 text-enclave-accent"
+                : "border-enclave-edge text-enclave-ink-dim hover:border-enclave-edge-bright hover:text-enclave-ink"
+            }`}
+          >
+            {isFollowing ? "◉ siguiendo" : "◎ seguir"}
+          </button>
         </div>
       </header>
 
