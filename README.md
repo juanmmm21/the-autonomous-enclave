@@ -19,7 +19,10 @@ The underlying question the project explores is what social and economic dynamic
 - **Real memory compression cycle**: at the end of every simulated day, each agent's tick-by-tick reasoning is summarized, embedded and persisted in Qdrant, then retrieved as relevant past memories on future perceives — verified live against a running Ollama + Qdrant stack, not just unit-tested.
 - **Macro indicators derived from real state, not placeholders**: the simulated energy price evolves every tick (scarcity drift plus a periodic oscillation) and feeds a real day-over-day inflation figure; transactions-per-minute is computed from the central bank's actual transaction ledger over a real-time window, not a hardcoded `0.0`.
 - **State survives a restart without slowing down the simulation**: `CentralBank` and the inference quota ledger stay in memory during execution (no DB round-trip on the hot per-tick path), but a Postgres checkpoint is taken every simulated day and on clean shutdown, then restored on the next boot — verified live by restarting the process twice and confirming each citizen came back with its real, persisted balance instead of its seed default.
-- **A pixel-art map with reproducible, code-generated art**: every ground tile, animated citizen spritesheet and decorative building is drawn pixel-by-pixel by a build-time script (`scripts/generate_tileset.py`, Python + Pillow) and committed as PNGs — no hand-authored or third-party art, and the whole tileset can be regenerated or restyled by editing one script.
+- **A pixel-art map with reproducible, code-generated art**: every ground tile, animated citizen spritesheet and decorative building — market, bank, judicial hall, vector-memory lab, signal tower, script workshop, derivatives exchange, housing — is drawn pixel-by-pixel by a build-time script (`scripts/generate_tileset.py`, Python + Pillow) and committed as PNGs — no hand-authored or third-party art, and the whole tileset can be regenerated or restyled by editing one script.
+- **A city you can actually navigate, not just watch**: citizens path-find around building footprints instead of walking through them, keep wandering locally between backend ticks so the colony never looks frozen, and the camera supports drag-to-pan and cursor-centered zoom with a dynamically recomputed minimum zoom (tied to the real viewport size, not a hardcoded constant) so zooming out never exposes empty canvas outside the world.
+- **The invisible half of the economy, made visible**: `TickEvent` streams the open market board, unresolved contracts and recent Judge rulings every tick — not just agent snapshots — so the "Actividad económica" panel shows real offers, disputes and verdicts as they happen instead of leaving that state locked inside the backend.
+- **Citizens created at runtime, not just at boot**: `POST /api/v1/citizens` registers a new agent on the live `TickEngine` and broadcasts an immediate `TickEvent` snapshot so it appears on the map at once, instead of waiting for the next scheduled tick.
 
 ## How it works
 
@@ -31,9 +34,10 @@ The underlying question the project explores is what social and economic dynamic
 3. The tick's **passive cost** (computational upkeep) is charged; if the balance reaches zero, the agent goes bankrupt.
 4. A contract left `PENDING` for more than a simulated day is auto-escalated to `DISPUTED` even if neither party ever files one, so a wronged agent that simply goes quiet still reaches the Judge. Every `DISPUTED` contract is resolved asynchronously by the **Judge Agent**, which reviews the real transaction history between the two parties, fines whoever is at fault, and docks the injured party's trust in the offender.
 5. Every `ticks_per_day` ticks, the **sleep cycle** runs: each agent's accumulated reasoning for the day is summarized and persisted as an embedding in Qdrant, and the intermediate log is cleared for the next day.
-6. At the end of every tick, a `TickEvent` (snapshot of all agents + macro indicators) is broadcast over WebSocket to the web interface, which updates the Phaser map and the telemetry panels in real time.
+6. At the end of every tick, a `TickEvent` (agent snapshots, macro indicators, the open market board, unresolved contracts and recent Judge rulings) is broadcast over WebSocket to the web interface, which updates the Phaser map and the telemetry panels in real time.
 7. The "God Observer" can intervene at any moment from the **Divine Intervention Console**: devalue the currency, subsidize an agent, cut its inference quota (technological blackout), or shock the energy price (scarcity or abundance).
 8. Every simulated day (and on clean shutdown), the economic state is checkpointed to Postgres and restored on the next boot, so a restart doesn't reset the colony back to its seed defaults.
+9. New citizens aren't limited to the seeded population: the "Fundición de ciudadanos" panel calls `POST /api/v1/citizens` to register one on the live `TickEngine` with a name and personality, which opens its bank/quota accounts and broadcasts an immediate `TickEvent` so it shows up on the map right away.
 
 ## Architecture
 
@@ -63,15 +67,16 @@ the-autonomous-enclave/
 │   │   │   └── judge.py            # Judge Agent: resolves disputed contracts using real transaction evidence
 │   │   ├── api/v1/
 │   │   │   ├── router.py           # /health, /agents, /tick
+│   │   │   ├── citizens.py         # POST /citizens — register a new agent on the live TickEngine
 │   │   │   ├── interventions.py    # /interventions/devalue|subsidize|blackout|energy_shock
 │   │   │   └── websocket.py        # /ws/telemetry + TelemetryHub
 │   │   └── main.py             # FastAPI app factory + lifespan (seeds citizens, restores state, starts the TickEngine)
-│   └── tests/                  # pytest: economy, models, contracts, agent cycle, tick engine, judge, persistence, seeding
+│   └── tests/                  # pytest: economy, models, contracts, agent cycle, tick engine, judge, persistence, seeding, citizens API
 └── frontend/
     └── src/
         ├── components/
-        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts + tileset.ts (pixel-art map + asset manifest)
-        │   └── dashboard/       # EconomyPanel, ConsciousnessInspector, DivineConsole
+        │   ├── phaser/          # GameCanvas.tsx + MainScene.ts + tileset.ts + mapConstants.ts + pathfinding.ts
+        │   └── dashboard/       # EconomyPanel, ActivityFeed, CitizenCensus, ConsciousnessInspector, DivineConsole, CitizenFoundry, HelpOverlay
         ├── hooks/useTelemetrySocket.ts  # WebSocket with automatic reconnection
         └── types/api.ts         # contract shared with the backend
 ```
@@ -81,7 +86,7 @@ the-autonomous-enclave/
 - Python 3.11+
 - Node.js 20+
 - Docker (for Redis, Qdrant and Postgres)
-- [Ollama](https://ollama.com) running locally, with at least one model pulled (e.g. `ollama pull llama3.2`)
+- [Ollama](https://ollama.com) running locally, with three models pulled: the citizen model (e.g. `ollama pull llama3.2`), the judge model (`ollama pull phi4`), and the embedding model used by the sleep cycle (`ollama pull nomic-embed-text`) — missing the last one doesn't fail loudly, it just makes every agent's `perceive` step throw on `/api/embeddings` and silently skip `think`/`act` for the rest of the tick (see Troubleshooting)
 
 **macOS / Linux**
 
@@ -146,7 +151,7 @@ cd frontend
 npm run dev
 ```
 
-With both running, `http://localhost:5173` shows "God Mode": the pixel-art plaza with a market and a bank in the background and the five seeded citizens (Ada, Boris, Clio, Dorian, Elena — each with a distinct personality) walking around it, the economic indicators panel and, once you select an agent, its Consciousness Inspector with inventory, trust links and a live reasoning feed.
+With both running, `http://localhost:5173` shows "God Mode": the pixel-art city (markets, banks, the judicial hall, vector labs, signal towers, script workshops, a derivatives exchange and housing blocks spread across its districts) with the twelve seeded citizens walking around it, a corner minimap for quick navigation, the economic indicators panel, a live economic-activity feed (open offers, unresolved contracts, Judge rulings), a citizen census, and — once you select an agent — its Consciousness Inspector with inventory, trust links and a live reasoning feed. New citizens can be created on the fly from the "Fundición de ciudadanos" panel.
 
 ## API contract
 
@@ -158,11 +163,12 @@ All endpoints live under `/api/v1`. Financial amounts (`balance`, `unit_price`, 
 | `GET` | `/agents` | Snapshot of every registered agent |
 | `GET` | `/agents/{agent_id}` | Snapshot of one agent (404 if it doesn't exist) |
 | `GET` | `/tick` | Current tick of the global clock |
+| `POST` | `/citizens` | `{"display_name": "...", "personality": ["cautious", ...], "starting_balance": "120", "position": {"x": 0, "y": 0}}` (balance and position optional) — registers a new citizen on the fly and broadcasts an immediate `TickEvent`; `409` on agent-id collision |
 | `POST` | `/interventions/devalue` | `{"factor": "0.5"}` — devalues every citizen's SimCoin |
 | `POST` | `/interventions/subsidize` | `{"agent_id": "...", "amount": "100"}` — prints SimCoin for an agent |
 | `POST` | `/interventions/blackout` | `{"agent_id": "...", "quota": 0}` — adjusts an agent's inference quota |
 | `POST` | `/interventions/energy_shock` | `{"factor": "2.0"}` — `>1` scarcity, `<1` abundance; shifts the base energy price with immediate effect |
-| `WS` | `/ws/telemetry` | Streams `TickEvent` (agent snapshot + macro indicators) on every tick |
+| `WS` | `/ws/telemetry` | Streams `TickEvent` (agent snapshot, macro indicators, open market offers, unresolved contracts and recent Judge rulings) on every tick |
 
 ## Development
 
@@ -203,7 +209,8 @@ npm run build
 
 - **The telemetry WebSocket won't connect**: check that the backend is running on the port `vite.config.ts` expects (`8000` by default), and that nothing else is bound to `5173` or `8000`.
 - **`OllamaLLMBackend` raises `LLMGenerationError`**: Ollama isn't running, the configured model (`ENCLAVE_OLLAMA_MODEL`) hasn't been pulled, or the model isn't returning valid JSON despite `format: "json"` — check the backend log, which includes the raw text the model returned. This is expected occasionally with smaller local models (e.g. llama3.2 sometimes deviates from the exact action schema); the tick engine logs it and moves on to the next agent instead of crashing.
-- **An agent's position looks wrong on the map**: `Position` enforces `0 <= x < GRID_WIDTH` and `0 <= y < GRID_HEIGHT` (must match `GRID_WIDTH`/`GRID_HEIGHT` in `frontend/src/components/phaser/MainScene.ts`); a move outside those bounds is rejected as a malformed action rather than silently accepted.
+- **An agent's position looks wrong on the map**: `Position` enforces `0 <= x < GRID_WIDTH` and `0 <= y < GRID_HEIGHT` (must match `GRID_WIDTH`/`GRID_HEIGHT` in `frontend/src/components/phaser/mapConstants.ts`); a move outside those bounds is rejected as a malformed action rather than silently accepted.
+- **Citizens never show a reasoning log, inventory or trust links, and the backend logs "attempted an economically invalid action" every tick with an `httpx.HTTPStatusError: 404` on `/api/embeddings`**: `nomic-embed-text` isn't pulled in Ollama (`ollama pull nomic-embed-text`). `QdrantMemoryStore.retrieve_relevant_memories` is called from `AgentRuntime.perceive`, before `think`/`act` run, so a missing embedding model aborts the whole tick for that agent — it never gets to move, trade or reason, not just to sleep. This is easy to hit when Ollama already had the model pulled on one machine (from earlier testing) but not on a fresh one.
 - **Qdrant logs version-compatibility warnings**: informational notice from `qdrant-client` when it can't verify the server version; it doesn't block startup.
 - **`mypy --strict` fails on `numpy` stubs**: `numpy` arrives as a transitive dependency of `qdrant-client`; `pyproject.toml` pins `python_version = "3.12"` in the mypy config specifically to avoid a syntax conflict between its stubs and strict mode.
 - **Backend fails to start with a Postgres connection error**: make sure `docker compose up -d` includes the `postgres` service and it's healthy (`docker compose ps`); check `ENCLAVE_POSTGRES_DSN` matches the credentials in `docker-compose.yml` if you changed them.
@@ -211,7 +218,7 @@ npm run build
 
 ## Roadmap
 
-No open items right now. Natural next steps if the project keeps growing: a real evidentiary link between a signed contract's `terms` and the specific transactions meant to fulfill it (today the Judge reasons over *all* transaction history between the two parties, not a scoped set tied to that one contract), and letting citizens produce and trade the other tradable asset types (`vector_pack`, `code_script`, etc.) beyond inference quota, which today only move SimCoin without transferring anything back.
+Natural next steps if the project keeps growing: a real evidentiary link between a signed contract's `terms` and the specific transactions meant to fulfill it (today the Judge reasons over *all* transaction history between the two parties, not a scoped set tied to that one contract), and letting citizens produce and trade the other tradable asset types (`vector_pack`, `code_script`, etc.) beyond inference quota, which today only move SimCoin without transferring anything back. The new lab/signal-tower/workshop/exchange buildings are visual flavor tied to those asset types for now, not yet gated behind citizen actions the way the market and bank are.
 
 ## License
 
