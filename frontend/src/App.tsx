@@ -170,43 +170,30 @@ export function App() {
         </div>
 
         <aside
-          className={`flex min-h-0 shrink-0 flex-col border-l border-enclave-edge bg-enclave-panel transition-[width,padding] duration-200 ${
-            isAsideOpen ? "w-[22rem]" : "w-0 overflow-hidden"
+          className={`flex min-h-0 shrink-0 flex-col gap-3 overflow-y-auto border-l border-enclave-edge bg-enclave-panel transition-[width,padding] duration-200 ${
+            isAsideOpen ? "w-[22rem] p-3" : "w-0 overflow-hidden p-0"
           }`}
         >
-          {/* Paneles de monitorización: pueden crecer mucho (censo largo, feed de
-              actividad, razonamiento) así que viven en su propia región con scroll,
-              separada de las herramientas de abajo para que estas NUNCA dependan
-              de que el observador se acuerde de hacer scroll para alcanzarlas. */}
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-            {/* Primero en la región con scroll: nada más seleccionar un ciudadano,
-                su ficha aparece sin necesidad de desplazarse. */}
-            <ConsciousnessInspector
-              agent={selectedAgent}
-              reasoningLog={reasoningLog}
-              isFollowing={followAgentId !== null && followAgentId === selectedAgentId}
-              onToggleFollow={handleToggleFollow}
-            />
-            <EconomyPanel indicators={latestEvent?.indicators ?? null} />
-            <ActivityFeed
-              offers={latestEvent?.market_offers ?? []}
-              contracts={latestEvent?.open_contracts ?? []}
-              rulings={latestEvent?.recent_rulings ?? []}
-              agents={agents}
-            />
-            <CitizenCensus
-              agents={agents}
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={setSelectedAgentId}
-            />
-          </div>
-
-          {/* Herramientas de intervención: siempre visibles, ancladas al fondo,
-              fuera de la región con scroll de arriba. */}
-          <div className="flex shrink-0 flex-col gap-3 border-t border-enclave-edge p-3">
-            <DivineConsole selectedAgentId={selectedAgentId} />
-            <CitizenFoundry />
-          </div>
+          <EconomyPanel indicators={latestEvent?.indicators ?? null} />
+          <ActivityFeed
+            offers={latestEvent?.market_offers ?? []}
+            contracts={latestEvent?.open_contracts ?? []}
+            rulings={latestEvent?.recent_rulings ?? []}
+            agents={agents}
+          />
+          <CitizenCensus
+            agents={agents}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+          />
+          <ConsciousnessInspector
+            agent={selectedAgent}
+            reasoningLog={reasoningLog}
+            isFollowing={followAgentId !== null && followAgentId === selectedAgentId}
+            onToggleFollow={handleToggleFollow}
+          />
+          <DivineConsole selectedAgentId={selectedAgentId} />
+          <CitizenFoundry />
         </aside>
       </main>
 
