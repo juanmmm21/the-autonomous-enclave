@@ -24,7 +24,6 @@ const SECTIONS: HelpSection[] = [
     body: [
       "Arrastra con el puntero para desplazar la cámara por la ciudad.",
       "Usa la rueda del ratón para acercar o alejar el zoom (se centra donde apunta el cursor).",
-      "Las flechas o W/A/S/D también mueven la cámara.",
       "El minimapa de la esquina inferior izquierda muestra toda la ciudad, el rectángulo del " +
         "encuadre actual y un punto de color por ciudadano: haz clic en él para saltar la cámara " +
         "a esa zona.",

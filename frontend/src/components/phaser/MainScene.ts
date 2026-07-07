@@ -48,7 +48,6 @@ const WANDER_SPEED_FACTOR = 0.75;
 const ZOOM_MAX = 2.2;
 const CAMERA_INITIAL_ZOOM = 0.85;
 const DRAG_THRESHOLD_PX = 4;
-const KEYBOARD_PAN_SPEED_PX_PER_S = 320;
 /** Suavizado del seguimiento de cámara (Cambio 4b): 0 = instantáneo, 1 = nunca alcanza. */
 const FOLLOW_LERP = 0.08;
 
@@ -156,7 +155,6 @@ export class MainScene extends Phaser.Scene {
   private followedAgentId: string | null = null;
   private isDragging = false;
   private pointerDownAt: { x: number; y: number } | null = null;
-  private keyboardKeys: Record<string, Phaser.Input.Keyboard.Key> | null = null;
 
   private minimap: MinimapView | null = null;
   private nightOverlay: Phaser.GameObjects.Rectangle | null = null;
@@ -270,12 +268,11 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  update(_time: number, delta: number): void {
+  update(): void {
     // Orden de dibujo por línea de pies, recalculado mientras se mueven.
     for (const view of this.views.values()) {
       view.container.setDepth(view.container.y + FOOT_OFFSET);
     }
-    this.updateKeyboardPan(delta);
     this.redrawMinimapDynamicLayer();
   }
 
@@ -500,23 +497,6 @@ export class MainScene extends Phaser.Scene {
         camera.scrollY += worldBefore.y - worldAfter.y;
       },
     );
-
-    this.keyboardKeys =
-      (this.input.keyboard?.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT") as Record<
-        string,
-        Phaser.Input.Keyboard.Key
-      >) ?? null;
-  }
-
-  private updateKeyboardPan(delta: number): void {
-    if (!this.keyboardKeys || this.followedAgentId) return;
-
-    const camera = this.cameras.main;
-    const step = (KEYBOARD_PAN_SPEED_PX_PER_S * delta) / 1000 / camera.zoom;
-    if (this.keyboardKeys.A?.isDown || this.keyboardKeys.LEFT?.isDown) camera.scrollX -= step;
-    if (this.keyboardKeys.D?.isDown || this.keyboardKeys.RIGHT?.isDown) camera.scrollX += step;
-    if (this.keyboardKeys.W?.isDown || this.keyboardKeys.UP?.isDown) camera.scrollY -= step;
-    if (this.keyboardKeys.S?.isDown || this.keyboardKeys.DOWN?.isDown) camera.scrollY += step;
   }
 
   // -------------------------------------------------------------------------
